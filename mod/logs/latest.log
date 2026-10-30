@@ -1,0 +1,4 @@
+[3110月2026 04:20:38.367] [lava-daemon-pool-playback-1-thread-1/INFO] [com.sedmelluq.lava.common.natives.NativeLibraryLoader/]: Native library libmpg123-0: loading with filter com.sedmelluq.discord.lavaplayer.natives.ConnectorNativeLibLoader$$Lambda$515/0x000002acbf308818@716fed1
+[3110月2026 04:20:38.402] [lava-daemon-pool-playback-1-thread-1/INFO] [com.sedmelluq.lava.common.natives.NativeLibraryLoader/]: Native library libmpg123-0: successfully loaded.
+[3110月2026 04:20:38.403] [lava-daemon-pool-playback-1-thread-1/INFO] [com.sedmelluq.lava.common.natives.NativeLibraryLoader/]: Native library connector: loading with filter null
+[3110月2026 04:20:38.470] [lava-daemon-pool-playback-1-thread-1/INFO] [com.sedmelluq.lava.common.natives.NativeLibraryLoader/]: Native library connector: successfully loaded.
