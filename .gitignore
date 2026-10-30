@@ -1,1 +1,7 @@
 test-server/
+mod/.gradle/
+mod/build/
+mod/run/
+plugin/target/
+.idea/
+*.iml

@@ -1,0 +1,43 @@
+name: RadioPlugin
+main: com.oogata.radioplugin.RadioPlugin
+version: ${project.version}
+api-version: '1.20'
+author: oogata
+description: URLの音楽をサーバー全体やラジオごとに同期再生する
+
+commands:
+  playersound:
+    description: 自分だけに音楽を流す（all で共有）
+    aliases: [ps]
+    usage: /<command> <play|playlist|add|pause|stop|list|skip|previous|all|listen|leave>
+  radiodisplay:
+    description: ラジオの設置・管理
+    aliases: [rd]
+    usage: /<command> <wand|create|delete|move|tp|radiolist>
+  radioplayer:
+    description: ラジオ単位の再生
+    aliases: [rp]
+    usage: /<command> <ラジオ名> <play|playlist|add|pause|stop|list|skip|previous|keep>
+
+permissions:
+  radioplugin.ps:
+    description: /ps の all・listen・leave 以外のサブコマンド
+    default: true
+  radioplugin.ps.all:
+    description: /ps all と /ps all <サブコマンド>
+    default: true
+  radioplugin.ps.listen:
+    description: /ps listen・/ps leave
+    default: true
+  radioplugin.rd.manage:
+    description: /rd の wand・create・delete・move
+    default: op
+  radioplugin.rd.tp:
+    description: /rd tp
+    default: op
+  radioplugin.rd.list:
+    description: /rd radiolist
+    default: true
+  radioplugin.rp:
+    description: /rp の全サブコマンド（keep を含む）
+    default: op
