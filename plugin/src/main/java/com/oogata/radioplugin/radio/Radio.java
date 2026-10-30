@@ -1,5 +1,6 @@
 package com.oogata.radioplugin.radio;
 
+import com.oogata.radioplugin.player.PlaybackEngine;
 import java.util.UUID;
 
 /** 設置済みのラジオ1台ぶんの保存データ。座標は設置位置（選んだブロックの上面中央）。 */
@@ -18,6 +19,8 @@ public final class Radio {
     private int partCount;
     /** モデルの高さ（名前表示の位置に使う）。 */
     private double height = 1.0;
+    /** keep の再生内容（キュー・何曲目か・loop・状態）。keep が false のときは使わない。 */
+    private PlaybackEngine.Snapshot saved;
 
     public Radio(UUID id, String name, String world, double x, double y, double z, int rotation) {
         this.id = id;
@@ -90,6 +93,14 @@ public final class Radio {
 
     public void setHeight(double height) {
         this.height = height;
+    }
+
+    public PlaybackEngine.Snapshot saved() {
+        return saved;
+    }
+
+    public void setSaved(PlaybackEngine.Snapshot saved) {
+        this.saved = saved;
     }
 
     /** 設置位置が入っているチャンクの X 座標。 */

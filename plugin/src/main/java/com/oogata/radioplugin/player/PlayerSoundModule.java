@@ -51,6 +51,11 @@ public final class PlayerSoundModule implements Listener, NetService.Handler {
         return module;
     }
 
+    /** /rp でも同じ URL の取得を使う。 */
+    public TrackResolver resolver() {
+        return resolver;
+    }
+
     public void disable() {
         if (task != null) {
             task.cancel();

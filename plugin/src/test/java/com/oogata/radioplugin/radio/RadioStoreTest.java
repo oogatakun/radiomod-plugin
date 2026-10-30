@@ -51,6 +51,37 @@ class RadioStoreTest {
     }
 
     @Test
+    void keepのラジオは再生内容を保存して復元し_keepなしは保存しない() throws IOException {
+        File f = dir.resolve("radios.yml").toFile();
+        RadioStore a = store(f);
+        Radio kept = new Radio(UUID.randomUUID(), "kept", "world", 0, 0, 0, 0);
+        kept.setKeep(true);
+        kept.setSaved(new com.oogata.radioplugin.player.PlaybackEngine.Snapshot(
+                java.util.List.of(new com.oogata.radioplugin.player.Track("https://e.com/a.mp3", "曲A", 1000),
+                        new com.oogata.radioplugin.player.Track("https://e.com/live", "ライブ", -1)),
+                1, com.oogata.radioplugin.player.PlaybackEngine.Loop.PLAYLIST,
+                com.oogata.radioplugin.player.PlaybackEngine.State.PAUSED, 5000));
+        Radio plain = new Radio(UUID.randomUUID(), "plain", "world", 1, 0, 0, 0);
+        plain.setSaved(kept.saved()); // keep が false なら保存されない
+        a.add(kept);
+        a.add(plain);
+        a.save();
+
+        RadioStore b = store(f);
+        b.load();
+        var got = b.get(kept.id()).saved();
+        assertNotNull(got);
+        assertEquals(2, got.queue().size());
+        assertEquals("曲A", got.queue().get(0).title());
+        assertEquals(-1, got.queue().get(1).durationMs());
+        assertEquals(1, got.index());
+        assertEquals(com.oogata.radioplugin.player.PlaybackEngine.Loop.PLAYLIST, got.loop());
+        assertEquals(com.oogata.radioplugin.player.PlaybackEngine.State.PAUSED, got.state());
+        assertEquals(0, got.positionMs()); // 再生位置は保存しない
+        assertNull(b.get(plain.id()).saved());
+    }
+
+    @Test
     void 名前は大文字小文字を区別せず探せる() {
         RadioStore s = store(dir.resolve("radios.yml").toFile());
         Radio r = new Radio(UUID.randomUUID(), "Lobby", "world", 0, 0, 0, 0);
