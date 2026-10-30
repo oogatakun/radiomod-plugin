@@ -13,6 +13,8 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
+jarJar.enable()
+
 minecraft {
     mappings channel: 'official', version: minecraft_version
 
@@ -32,14 +34,45 @@ minecraft {
 
 repositories {
     mavenCentral()
+    maven { url = 'https://maven.lavalink.dev/releases' }
+}
+
+// 音声の取得・デコードに使うライブラリ。jar-in-jar で mod の jar に同梱する。
+// Minecraft 本体が持っているライブラリは重複させないため除く。
+configurations {
+    audioLibs {
+        canBeConsumed = false
+        exclude group: 'org.slf4j'
+        exclude group: 'org.apache.httpcomponents'
+        exclude group: 'commons-io'
+        exclude group: 'commons-codec'
+        exclude group: 'commons-logging'
+        exclude group: 'org.jetbrains', module: 'annotations'
+    }
 }
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
+    audioLibs 'dev.arbjerg:lavaplayer:2.2.7'
+    audioLibs 'dev.lavalink.youtube:common:1.18.2'
+    compileOnly files({ configurations.audioLibs.files })
+    testImplementation files({ configurations.audioLibs.files })
+
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// audioLibs の解決結果を、固定した版のまま jar-in-jar に載せる。
+afterEvaluate {
+    configurations.audioLibs.resolvedConfiguration.resolvedArtifacts.each { a ->
+        def id = a.moduleVersion.id
+        dependencies.jarJar(group: id.group, name: id.name, version: "[${id.version}]") {
+            transitive = false
+            jarJar.pin(it, id.version)
+        }
+    }
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -58,6 +91,15 @@ processResources {
     filesMatching('META-INF/mods.toml') {
         expand props
     }
+}
+
+// 配布するのは jar-in-jar 入りの jar（クラス名に -all が付く既定を外す）。
+jar {
+    archiveClassifier = 'slim'
+}
+
+tasks.named('jarJar') {
+    archiveClassifier = ''
 }
 
 jar {
