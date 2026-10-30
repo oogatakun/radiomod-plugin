@@ -1,9 +1,10 @@
 package com.oogata.radioplugin.net;
 
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -16,7 +17,17 @@ public final class NetService implements PluginMessageListener, Listener {
 
     private static final long START_LEAD_MS = 500;
 
+    /** 受信したメッセージを、再生側（player/ など）へ渡す。 */
+    public interface Handler {
+        default void onHello(Player player) {
+        }
+
+        default void onError(Player player, Messages.Error error) {
+        }
+    }
+
     private final Plugin plugin;
+    private final List<Handler> handlers = new CopyOnWriteArrayList<>();
     private final Set<UUID> modPlayers = ConcurrentHashMap.newKeySet();
 
     public NetService(Plugin plugin) {
@@ -33,6 +44,10 @@ public final class NetService implements PluginMessageListener, Listener {
         plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, Messages.CHANNEL);
         plugin.getServer().getMessenger().unregisterIncomingPluginChannel(plugin, Messages.CHANNEL, this);
         modPlayers.clear();
+    }
+
+    public void addHandler(Handler handler) {
+        handlers.add(handler);
     }
 
     public boolean hasMod(Player player) {
@@ -61,6 +76,8 @@ public final class NetService implements PluginMessageListener, Listener {
         }
         if (message instanceof Messages.Hello hello) {
             onHello(player, hello);
+        } else if (message instanceof Messages.Error error) {
+            handlers.forEach(h -> h.onError(player, error));
         } else {
             plugin.getLogger().fine(player.getName() + " から未処理のメッセージ: " + message);
         }
@@ -74,6 +91,7 @@ public final class NetService implements PluginMessageListener, Listener {
         // G1 の疎通確認用。ステップ3で外す。
         send(player, new Messages.Play(Messages.Slot.PERSONAL_SLOT, 0L, "test://hello", "ping", -1L,
                 System.currentTimeMillis() + START_LEAD_MS, null));
+        handlers.forEach(h -> h.onHello(player));
     }
 
     @EventHandler
