@@ -90,7 +90,9 @@ public final class RadioAppearance {
             return new BuildResult(0, 0, used);
         }
         BuildResult result = finish(displays, r, root, base, used);
-        spawnName(r, pos, result.height(), nowPlaying);
+        if (result.parts() > 0) {
+            spawnName(r, pos, result.height(), nowPlaying);
+        }
         return result;
     }
 
@@ -157,11 +159,21 @@ public final class RadioAppearance {
     private static List<Display> collect(World world, Location root, String tag) {
         List<Display> out = new ArrayList<>();
         for (Entity e : world.getNearbyEntities(root, 3, 4, 3)) {
-            if (e instanceof Display d && d.getScoreboardTags().contains(tag)) {
+            if (e instanceof Display d && hasModelTag(d, tag)) {
                 out.add(d);
             }
         }
         return out;
+    }
+
+    /** モデルのタグ（base そのもの、または base_ で始まるもの）を持つか。ルートとまとまりは base、パーツは base_N だけを持つ。 */
+    private static boolean hasModelTag(Display d, String base) {
+        for (String t : d.getScoreboardTags()) {
+            if (t.equals(base) || t.startsWith(base + "_")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isStructural(Display d, String base) {
