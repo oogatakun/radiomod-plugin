@@ -5,6 +5,7 @@ import com.oogata.radiomod.net.Messages;
 import com.oogata.radiomod.sync.DriftCorrector;
 import com.oogata.radiomod.sync.SlotControl;
 import com.oogata.radiomod.sync.StartGate;
+import com.oogata.radiomod.sync.SyncSettings;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter;
@@ -73,7 +74,10 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private long stateSinceNanos = System.nanoTime();
     private State trackedState = State.IDLE;
     private String lastGate = "-";
+    private long firstFrameTimecode = -1;
     private long gateDesiredMs = -1;
+    private long pinnedSinceNanos;
+    private boolean pinnedLogged;
     private long gateReadyMs = -1;
     private long lastDriftNanos;
 
@@ -345,6 +349,9 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         speed.reset();
         drift.reset();
         gate.reset();
+        pinnedSinceNanos = 0;
+        pinnedLogged = false;
+        firstFrameTimecode = -1;
         position.reset(0);
         target = null;
         pauseRequested = false;
@@ -544,8 +551,8 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 AL10.alSourcePlay(source);
                 state = State.PLAYING;
                 lastDriftNanos = now;
-                RadioMod.LOGGER.info("[{}] 鳴らし始め: 鳴らすべき位置={}ms 準備できた位置={}ms 速度={} AL_PITCH={} キュー={} 読み直し={}回",
-                        describe(), gateDesiredMs, gateReadyMs, speed.rate(), AL10.alGetSourcef(source, AL10.AL_PITCH),
+                RadioMod.LOGGER.info("[{}] 鳴らし始め: 鳴らすべき位置={}ms 準備できた位置(要求位置+再生済み)={}ms 最初のフレームのタイムコード={}ms 速度={} AL_PITCH={} キュー={} 読み直し={}回",
+                        describe(), gateDesiredMs, gateReadyMs, firstFrameTimecode, speed.rate(), AL10.alGetSourcef(source, AL10.AL_PITCH),
                         queued.size(), gate.seeks());
             }
         } else if (state == State.PLAYING) {
@@ -603,7 +610,20 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
             return;
         }
         long diff = desired - position.positionMs(offsetFrames());
-        speed.setTarget(drift.update(diff));
+        double deviation = drift.update(diff);
+        speed.setTarget(deviation);
+        // 補正が上限に張り付いたまま続いていたら、診断ログに出す（ずれが大きすぎて、速度では追いつけない）。
+        if (drift.isCorrecting() && Math.abs(deviation) >= SyncSettings.maxDeviation() - 1e-9) {
+            if (pinnedSinceNanos == 0) {
+                pinnedSinceNanos = nowNanos;
+            } else if (!pinnedLogged && nowNanos - pinnedSinceNanos > 3_000_000_000L) {
+                pinnedLogged = true;
+                RadioMod.LOGGER.warn("[{}] 速度の補正が上限に張り付いています: ずれ={}ms（鳴らすべき位置 {}ms）", describe(), diff, desired);
+            }
+        } else {
+            pinnedSinceNanos = 0;
+            pinnedLogged = false;
+        }
     }
 
     /** デコード済みのフレームを集めて、OpenAL のバッファに入れて音源に積む。 */
@@ -617,8 +637,11 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 return;
             }
             if (!position.isBased()) {
-                long tc = frame.getTimecode();
-                position.setBase(tc >= 0 ? tc : 0);
+                // フレームのタイムコードは、デコーダが先読みした位置が入っていて、キューの先頭の位置と一致しない
+                // （実機で、準備できた位置が曲の頭から 1〜2 秒の時点で 13〜29 秒になった）。位置の基準には使わず、
+                // 「取得を始めた位置（要求した位置）」を使う。タイムコードは診断のために記録するだけにする。
+                firstFrameTimecode = frame.getTimecode();
+                position.markBased();
             }
             if (pending == null) {
                 pending = ByteBuffer.allocateDirect(FRAMES_PER_BUFFER * Decoder.FRAME_SAMPLES * Decoder.CHANNELS * 2)

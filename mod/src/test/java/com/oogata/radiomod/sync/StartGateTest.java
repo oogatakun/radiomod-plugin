@@ -181,4 +181,30 @@ class StartGateTest {
         assertEquals(StartGate.Action.PLAY, action);
         assertEquals(StartGate.MAX_SEEKS, g.seeks());
     }
+
+    /** 鳴らすべき位置 1175ms、キューの先頭が 1405ms なら、追いつくまで待ってから鳴らし、補正は始まらない。 */
+    @Test
+    void 準備の位置が少し先なら_追いつくまで待ってから鳴らし_補正が上限に張り付かない() {
+        StartGate g = new StartGate();
+        DriftCorrector drift = new DriftCorrector();
+        long ready = 1405;
+        long now = 5000;
+        long desired = 1175;
+        StartGate.Decision d = g.decide(desired, ready, true, now);
+        while (d.action() == StartGate.Action.WAIT) {
+            now += 10;
+            desired += 10;
+            d = g.decide(desired, ready, true, now);
+        }
+        assertEquals(StartGate.Action.PLAY, d.action());
+        assertTrue(Math.abs(desired - ready) <= 10, "鳴らし始めのずれ=" + (desired - ready));
+        assertEquals(0, drift.update(desired - ready));
+        assertEquals(0, g.seeks());
+    }
+
+    @Test
+    void 鳴らし始めのずれが大きければ_補正に頼らず先に位置を合わせる() {
+        StartGate g = new StartGate();
+        assertEquals(StartGate.Action.SEEK, g.decide(1175, 800, true, 0).action()); // 375ms 遅れ
+    }
 }

@@ -32,6 +32,11 @@ public final class PlayedPosition {
         return based;
     }
 
+    /** 最初のフレームが届いた。基準位置は、reset で指定した（要求した）位置のままにする。 */
+    public void markBased() {
+        based = true;
+    }
+
     /** 最初のフレームの位置が分かったときに呼ぶ。 */
     public void setBase(long firstFrameMs) {
         baseMs = firstFrameMs;

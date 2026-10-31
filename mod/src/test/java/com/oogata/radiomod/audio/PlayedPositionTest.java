@@ -57,4 +57,15 @@ class PlayedPositionTest {
         p.reset(100);
         assertEquals(100, p.positionMs(-5));
     }
+
+    @Test
+    void 基準は要求した位置で_キューの先頭の位置から数える() {
+        PlayedPosition p = new PlayedPosition(48000);
+        p.reset(1405); // 1405ms から取得を始めた
+        p.markBased(); // 最初のフレームが届いても、基準は動かさない
+        assertEquals(1405, p.positionMs(0)); // キュー（8個・約800ms分）を積んだだけでは進まない
+        p.addProcessed(4800); // 100ms 分を鳴らし終えた
+        assertEquals(1505, p.positionMs(0));
+        assertEquals(1505 + 20, p.positionMs(960)); // いまのバッファの中で 20ms 進んだ
+    }
 }
