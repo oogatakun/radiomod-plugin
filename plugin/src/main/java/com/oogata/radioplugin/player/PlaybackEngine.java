@@ -2,6 +2,7 @@ package com.oogata.radioplugin.player;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 /**
@@ -81,12 +82,26 @@ public final class PlaybackEngine {
     private long trackId;
     private int consecutiveErrors;
     private long lastSyncMs;
+    private Consumer<String> trace = line -> { };
+    private String label = "";
 
     public PlaybackEngine(Clock clock, Settings settings, LongSupplier trackIds, Output output) {
         this.clock = clock;
         this.settings = settings;
         this.trackIds = trackIds;
         this.output = output;
+    }
+
+    /** 状態を変える操作の診断ログの出し先。label はどのエンジンか(例: 個人:alice)。 */
+    public void setTrace(String label, Consumer<String> trace) {
+        this.label = label;
+        this.trace = trace;
+    }
+
+    private void trace(String op) {
+        trace.accept("エンジン[" + label + "] " + op + ": state=" + state + " index=" + index + "/" + queue.size()
+                + " trackId=" + trackId + " originMs=" + originMs + " pausedPositionMs=" + pausedPositionMs
+                + " now=" + clock.nowMs());
     }
 
     // ---- 読み取り ----
@@ -188,6 +203,7 @@ public final class PlaybackEngine {
                 pausedPositionMs = Math.max(0, now - originMs);
                 state = State.PAUSED;
                 output.pause(pausedPositionMs);
+                trace("pause");
                 return Result.OK;
             }
             case PAUSED -> {
@@ -195,6 +211,7 @@ public final class PlaybackEngine {
                 state = State.PLAYING;
                 lastSyncMs = now;
                 output.resume(originMs);
+                trace("resume");
                 return Result.OK;
             }
             default -> {
@@ -269,6 +286,7 @@ public final class PlaybackEngine {
         lastSyncMs = now;
         output.play(currentTrack(), trackId, originMs);
         output.trackStarted(currentTrack());
+        trace("restore(位置=" + snapshot.positionMs() + ")");
         if (snapshot.state() == State.PAUSED) {
             pausedPositionMs = snapshot.positionMs();
             state = State.PAUSED;
@@ -329,12 +347,14 @@ public final class PlaybackEngine {
         Track track = queue.get(index);
         output.play(track, trackId, originMs);
         output.trackStarted(track);
+        trace("startCurrent");
     }
 
     private void stopPlayback() {
         if (state != State.STOPPED) {
             state = State.STOPPED;
             output.stop();
+            trace("stop");
         }
     }
 }

@@ -32,7 +32,7 @@ public final class NetService implements PluginMessageListener, Listener {
                 (id, message) -> {
                     Player p = plugin.getServer().getPlayer(id);
                     if (p != null) {
-                        p.sendPluginMessage(plugin, Messages.CHANNEL, Codec.encode(message));
+                        transmit(p, message);
                     }
                 },
                 System::currentTimeMillis, plugin.getLogger()::info, plugin.getLogger()::warning,
@@ -80,7 +80,20 @@ public final class NetService implements PluginMessageListener, Listener {
         if (!hasMod(player)) {
             return;
         }
+        transmit(player, message);
+    }
+
+    private void transmit(Player player, Messages message) {
+        log(true, player, message);
         player.sendPluginMessage(plugin, Messages.CHANNEL, Codec.encode(message));
+    }
+
+    /** 診断ログ。TIME / TIME_REQ は config の debug-net が true のときだけ出す。 */
+    private void log(boolean outgoing, Player player, Messages message) {
+        if (MessageLog.isNoisy(message) && !plugin.getConfig().getBoolean("debug-net", false)) {
+            return;
+        }
+        plugin.getLogger().info(MessageLog.format(outgoing, player.getName(), message, System.currentTimeMillis()));
     }
 
     @Override
@@ -95,6 +108,7 @@ public final class NetService implements PluginMessageListener, Listener {
             plugin.getLogger().warning(player.getName() + " から読めないメッセージ: " + e.getMessage());
             return;
         }
+        log(false, player, message);
         protocol.onMessage(player.getUniqueId(), player.getName(), message);
     }
 

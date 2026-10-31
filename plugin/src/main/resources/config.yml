@@ -1,0 +1,3 @@
+# true にすると、TIME / TIME_REQ（時計合わせ。量が多い）もログに出す。
+# それ以外の mod とのメッセージと再生エンジンの状態変化は、常に INFO で出る。
+debug-net: false
