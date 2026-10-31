@@ -31,6 +31,7 @@ public final class Decoder {
 
     private static synchronized AudioPlayerManager manager() {
         if (manager == null) {
+            NativeExtractor.prepare();
             DefaultAudioPlayerManager m = new DefaultAudioPlayerManager();
             m.getConfiguration().setOutputFormat(FORMAT);
             try {
