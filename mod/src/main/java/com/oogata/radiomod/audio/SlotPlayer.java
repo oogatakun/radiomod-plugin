@@ -331,10 +331,13 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private void flushOutput() {
         if (source != 0 && contextValid()) {
             AL10.alSourceStop(source);
-            while (!queued.isEmpty()) {
-                int[] q = queued.poll();
-                AL10.alSourceUnqueueBuffers(source);
-                freeBuffers.add(q[0]);
+            // 一度も鳴らしていない音源では、積んだバッファが「処理済み」にならず、alSourceUnqueueBuffers が
+            // 使えない（AL_INVALID_OPERATION）。止めた音源から全バッファを外すには AL_BUFFER = 0 を使う。
+            AL10.alSourcei(source, AL10.AL_BUFFER, 0);
+            queued.clear();
+            freeBuffers.clear();
+            for (int b : allBuffers) {
+                freeBuffers.add(b);
             }
             AL10.alSourcef(source, AL10.AL_PITCH, 1.0f);
         } else {
@@ -393,11 +396,33 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         queued.clear();
     }
 
-    private static void alCheck(String op) throws AudioFailure {
+    /** OpenAL のエラーを調べる。失敗したときは、どの呼び出しで、音源とバッファがどういう状態だったかを残す。 */
+    private void alCheck(String op) throws AudioFailure {
         int err = AL10.alGetError();
         if (err != AL10.AL_NO_ERROR) {
+            String diag = diagnostics();
+            RadioMod.LOGGER.error("OpenAL エラー 0x{} ({}) {}", Integer.toHexString(err), op, diag);
             throw AudioFailure.other("OpenAL エラー (" + op + "): 0x" + Integer.toHexString(err));
         }
+    }
+
+    private String diagnostics() {
+        StringBuilder sb = new StringBuilder("slot=").append(describe()).append(" state=").append(state)
+                .append(" source=").append(source).append(" context=").append(alContext)
+                .append(" currentContext=").append(ALC10.alcGetCurrentContext())
+                .append(" queued=").append(queued.size()).append(" free=").append(freeBuffers.size());
+        if (source != 0 && contextValid()) {
+            sb.append(" AL_SOURCE_STATE=0x").append(Integer.toHexString(AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE)))
+                    .append(" AL_BUFFERS_QUEUED=").append(AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED))
+                    .append(" AL_BUFFERS_PROCESSED=").append(AL10.alGetSourcei(source, AL10.AL_BUFFERS_PROCESSED));
+            AL10.alGetError();
+        }
+        sb.append(" queuedIds=");
+        for (int[] q : queued) {
+            sb.append(q[0]).append(',');
+        }
+        sb.append(" freeIds=").append(freeBuffers);
+        return sb.toString();
     }
 
     private void startWorker() {
