@@ -63,4 +63,18 @@ class SpeedSmootherTest {
         assertEquals(1.0, s.rate(), 1e-12);
         assertEquals(0.0, s.target(), 1e-12);
     }
+
+    @Test
+    void 曲の切り替えで速度が等倍に戻る() {
+        SpeedSmoother sp = new SpeedSmoother();
+        sp.setTarget(-0.02);
+        for (int i = 0; i < 300; i++) {
+            sp.step(0.01);
+        }
+        org.junit.jupiter.api.Assertions.assertTrue(sp.rate() < 0.995);
+        sp.reset(); // 新しい曲を始めるとき（SlotPlayer.resetPlayback）
+        org.junit.jupiter.api.Assertions.assertEquals(1.0, sp.rate(), 0);
+        org.junit.jupiter.api.Assertions.assertEquals(0.0, sp.target(), 0);
+        org.junit.jupiter.api.Assertions.assertEquals(1.0, sp.step(0.01), 0);
+    }
 }

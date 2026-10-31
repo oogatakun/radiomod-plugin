@@ -73,6 +73,8 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private long stateSinceNanos = System.nanoTime();
     private State trackedState = State.IDLE;
     private String lastGate = "-";
+    private long gateDesiredMs = -1;
+    private long gateReadyMs = -1;
     private long lastDriftNanos;
 
     private long alContext;
@@ -200,7 +202,21 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         flushOutput();
         trackDone = false;
         position.reset(to);
-        track.setPosition(to);
+        // 再生中のトラックに setPosition すると、読み直しが済むまでの古いフレームが残って鳴ってしまう。
+        // 新しいトラック（複製）に位置を決めてから鳴らし直せば、古いフレームは混ざらない。
+        AudioTrack fresh = null;
+        try {
+            fresh = track.makeClone();
+        } catch (RuntimeException e) {
+            RadioMod.LOGGER.warn("[{}] トラックを複製できないため、その場で位置を移します: {}", describe(), e.toString());
+        }
+        if (fresh != null && player != null) {
+            fresh.setPosition(to);
+            track = fresh; // 古いトラックの終了通知は t != track で無視される
+            player.playTrack(fresh);
+        } else {
+            track.setPosition(to);
+        }
         if (state == State.PLAYING || state == State.ENDED) {
             state = State.BUFFERING;
         }
@@ -528,6 +544,9 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 AL10.alSourcePlay(source);
                 state = State.PLAYING;
                 lastDriftNanos = now;
+                RadioMod.LOGGER.info("[{}] 鳴らし始め: 鳴らすべき位置={}ms 準備できた位置={}ms 速度={} AL_PITCH={} キュー={} 読み直し={}回",
+                        describe(), gateDesiredMs, gateReadyMs, speed.rate(), AL10.alGetSourcef(source, AL10.AL_PITCH),
+                        queued.size(), gate.seeks());
             }
         } else if (state == State.PLAYING) {
             int alState = AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE);
@@ -553,14 +572,18 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         }
         long desired = target.getAsLong();
         boolean canSeek = track != null && track.isSeekable();
-        StartGate.Decision d = gate.decide(desired, position.positionMs(offsetFrames()), canSeek,
+        long ready = position.positionMs(offsetFrames());
+        gateDesiredMs = desired;
+        gateReadyMs = ready;
+        StartGate.Decision d = gate.decide(desired, ready, canSeek,
                 System.nanoTime() / 1_000_000L);
         lastGate = d.action() + (d.action() == StartGate.Action.SEEK ? "→" + d.seekToMs() + "ms" : "");
         switch (d.action()) {
             case PLAY:
                 return true;
             case SEEK:
-                RadioMod.LOGGER.info("[{}] 開始位置を合わせ直す: 鳴らすべき位置 {}ms → {}ms から", describe(), desired, d.seekToMs());
+                RadioMod.LOGGER.info("[{}] 開始位置を合わせ直す: 鳴らすべき位置 {}ms 準備できた位置 {}ms → {}ms から", describe(), desired, ready,
+                        d.seekToMs());
                 seekLocked(d.seekToMs());
                 return false;
             default:
@@ -688,7 +711,11 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                     loaded.setPosition(start);
                 }
                 position.reset(start);
-                if (player == null) {
+                {
+                    // 曲ごとに新しいプレイヤーを使い、前の曲のフレームが残らないようにする。
+                    if (player != null) {
+                        player.destroy();
+                    }
                     player = Decoder.createPlayer();
                     player.addListener(new AudioEventAdapter() {
                         @Override
