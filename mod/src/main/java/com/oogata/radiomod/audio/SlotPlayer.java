@@ -18,6 +18,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayDeque;
 import java.util.function.DoubleSupplier;
+import java.util.zip.CRC32;
 import java.util.function.LongSupplier;
 import org.lwjgl.openal.AL10;
 import org.lwjgl.openal.ALC10;
@@ -75,6 +76,14 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private State trackedState = State.IDLE;
     private String lastGate = "-";
     /** 破棄したバッファの数。前の曲の残り（曲の切り替え・停止のとき）と、新しい曲を積んだあとの読み直しで分ける。 */
+    // 診断: 積んだ最初の約2秒分の PCM の指紋と、鳴らし始めてからの音源の状態
+    private static final int FINGERPRINT_BUFFERS = 20;
+    private final CRC32 fpCrc = new CRC32();
+    private final StringBuilder fpRms = new StringBuilder();
+    private int fpBuffers;
+    private int probeStage;
+    private long playStartNanos;
+    private boolean recreateSource;
     private int discardedPrevious;
     private int discardedBySeek;
     private long firstFrameTimecode = -1;
@@ -384,6 +393,9 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         }
         pending = null;
         pendingFrames = 0;
+        fpCrc.reset();
+        fpRms.setLength(0);
+        fpBuffers = 0;
     }
 
     private boolean contextValid() {
@@ -395,6 +407,11 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         if (ctx == 0) {
             throw AudioFailure.other("OpenAL がまだ使えません");
         }
+        if (source != 0 && ctx == alContext && recreateSource) {
+            // 曲ごとに音源を作り直し、前の曲の音源の位置・状態が残らないようにする。
+            releaseAl();
+        }
+        recreateSource = false;
         if (source != 0 && ctx == alContext) {
             return;
         }
@@ -562,6 +579,9 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 AL10.alSourcePlay(source);
                 state = State.PLAYING;
                 lastDriftNanos = now;
+                playStartNanos = now;
+                probeStage = 0;
+                probeSource(now);
                 RadioMod.LOGGER.info("[{}] 鳴らし始め: 鳴らすべき位置={}ms 準備できた位置(要求位置+再生済み)={}ms 最初のフレームのタイムコード={}ms 速度={} AL_PITCH={} キュー={} 読み直し={}回 再生済み={}フレーム 破棄したバッファ: 前の曲の残り={}個 読み直しで新しい曲の分={}個",
                         describe(), gateDesiredMs, gateReadyMs, firstFrameTimecode, speed.rate(), AL10.alGetSourcef(source, AL10.AL_PITCH),
                         queued.size(), gate.seeks(), position.processedFrames(), discardedPrevious, discardedBySeek);
@@ -576,6 +596,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
             } else if (queued.isEmpty() && trackDone && pending == null) {
                 state = State.ENDED;
             } else {
+                probeSource(now);
                 correctDrift(now);
             }
         }
@@ -675,6 +696,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
 
     private void upload() throws AudioFailure {
         pending.flip();
+        fingerprint(pending);
         int buffer = freeBuffers.poll();
         AL10.alBufferData(buffer, AL10.AL_FORMAT_STEREO16, pending, Decoder.SAMPLE_RATE);
         AL10.alSourceQueueBuffers(source, buffer);
@@ -682,6 +704,45 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         pending = null;
         pendingFrames = 0;
         alCheck("upload");
+    }
+
+    /** 診断: 積んだ最初の約2秒分（100ms × 20）の CRC32 と、100ms ごとの RMS をログに出す。 */
+    private void fingerprint(ByteBuffer data) {
+        if (fpBuffers >= FINGERPRINT_BUFFERS) {
+            return;
+        }
+        ByteBuffer d = data.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+        byte[] bytes = new byte[d.remaining()];
+        d.get(bytes);
+        fpCrc.update(bytes, 0, bytes.length);
+        java.nio.ShortBuffer shorts = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
+        double sum = 0;
+        int n = shorts.remaining();
+        while (shorts.hasRemaining()) {
+            double v = shorts.get() / 32768.0;
+            sum += v * v;
+        }
+        fpRms.append(String.format("%.3f ", n == 0 ? 0 : Math.sqrt(sum / n)));
+        if (++fpBuffers == FINGERPRINT_BUFFERS) {
+            RadioMod.LOGGER.info("[{}] 積んだ最初の約2秒の指紋: CRC32={} 開始位置={}ms RMS(100ms ごと)=[{}]", describe(),
+                    Long.toHexString(fpCrc.getValue()), position.positionMs(0), fpRms.toString().trim());
+        }
+    }
+
+    /** 診断: 鳴らし始めの直後・1秒後・3秒後の、音源の状態。 */
+    private void probeSource(long nowNanos) {
+        long elapsed = nowNanos - playStartNanos;
+        long[] at = {0, 1_000_000_000L, 3_000_000_000L};
+        if (probeStage >= at.length || elapsed < at[probeStage]) {
+            return;
+        }
+        RadioMod.LOGGER.info("[{}] 音源の状態({}ms 後): AL_SOURCE_STATE=0x{} AL_SEC_OFFSET={} AL_SAMPLE_OFFSET={} AL_BUFFERS_QUEUED={} AL_BUFFERS_PROCESSED={} 計算上の位置={}ms",
+                describe(), elapsed / 1_000_000L, Integer.toHexString(AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE)),
+                AL10.alGetSourcef(source, org.lwjgl.openal.AL11.AL_SEC_OFFSET),
+                AL10.alGetSourcei(source, org.lwjgl.openal.AL11.AL_SAMPLE_OFFSET),
+                AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED), AL10.alGetSourcei(source, AL10.AL_BUFFERS_PROCESSED),
+                position.positionMs(offsetFrames()));
+        probeStage++;
     }
 
     private final class LoadHandler implements AudioLoadResultHandler {
@@ -787,6 +848,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                     });
                 }
                 track = loaded;
+                recreateSource = true;
                 trackDone = false;
                 lastTickNanos = 0;
                 state = pauseRequested ? State.PAUSED : State.BUFFERING;
