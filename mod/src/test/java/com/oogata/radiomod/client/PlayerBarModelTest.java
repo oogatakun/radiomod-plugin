@@ -69,5 +69,8 @@ class PlayerBarModelTest {
                 5_000, true)), 1e-9);
         assertEquals("3:05", PlayerBarModel.time(185_000));
         assertEquals("0:00", PlayerBarModel.time(-5));
+        assertEquals("59:59", PlayerBarModel.time(3_599_000));
+        assertEquals("1:00:00", PlayerBarModel.time(3_600_000));
+        assertEquals("2:03:09", PlayerBarModel.time(7_389_000));
     }
 }

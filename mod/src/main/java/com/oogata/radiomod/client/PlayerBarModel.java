@@ -62,9 +62,15 @@ public final class PlayerBarModel {
         return Math.max(0, Math.min(1, (double) n.positionMs() / n.durationMs()));
     }
 
-    /** 3:05 のような表示。 */
+    /** 3:05 のような表示。1時間以上なら 1:00:00 のように、時間も出す。 */
     public static String time(long ms) {
-        long s = Math.max(0, ms) / 1000;
-        return (s / 60) + ":" + String.format("%02d", s % 60);
+        long total = Math.max(0, ms) / 1000;
+        long hours = total / 3600;
+        long minutes = total % 3600 / 60;
+        long seconds = total % 60;
+        if (hours > 0) {
+            return hours + ":" + String.format("%02d", minutes) + ":" + String.format("%02d", seconds);
+        }
+        return minutes + ":" + String.format("%02d", seconds);
     }
 }
