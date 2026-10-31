@@ -14,9 +14,10 @@ rem ---- edit for your environment ----
 set "JAVA_HOME=C:\Users\4jskk\.jdks\corretto-17.0.16"
 rem Folder names with Japanese characters are matched with ? (one ? per character).
 rem server folder "(3 chars)1" -> ???   /   client folders "(2 chars)-test-radiomod" -> ??-test-radiomod
+rem (client game folders are under the launcher: ...\.numapotelauncher\instances\<name>\mods)
 set "SERVER_PATTERN=F:\minecraftserver\servers\???"
-set "CLIENT1_PATTERN=F:\minecraftserver\instances\??-test-radiomod"
-set "CLIENT2_PATTERN=F:\minecraftserver\instances\??-test-radiomod-2"
+set "CLIENT1_PATTERN=C:\Users\4jskk\AppData\Roaming\.numapotelauncher\instances\??-test-radiomod"
+set "CLIENT2_PATTERN=C:\Users\4jskk\AppData\Roaming\.numapotelauncher\instances\??-test-radiomod-2"
 rem Set MVN to the full path of mvn.cmd to override the automatic search.
 set "MVN="
 rem -----------------------------------
