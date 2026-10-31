@@ -15,6 +15,7 @@ public final class RadioPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        saveDefaultConfig();
         net = new NetService(this);
         net.register();
 

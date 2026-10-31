@@ -41,6 +41,7 @@ public final class PlayerSoundModule implements Listener, NetService.Handler {
         PlayerSoundService service = new PlayerSoundService(host, resolver, Clock.SYSTEM,
                 new PlayerSoundService.Config(engine, 30_000));
 
+        service.setTrace(plugin.getLogger()::info); // 再生エンジンの状態変化は常に INFO で出す
         PlayerSoundModule module = new PlayerSoundModule(service, resolver);
         plugin.getServer().getPluginManager().registerEvents(module, plugin);
         net.addHandler(module);

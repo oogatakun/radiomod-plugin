@@ -73,12 +73,18 @@ public final class PlayerSoundService {
     /** list score を表示中のプレイヤーと、見せている内容（共有か個人か・最後に出した行）。 */
     private final Map<UUID, ScoreView> scoreViews = new HashMap<>();
     private Shared shared;
+    private Consumer<String> trace = line -> { };
 
     public PlayerSoundService(PlayerHost host, TrackResolver resolver, Clock clock, Config config) {
         this.host = host;
         this.resolver = resolver;
         this.clock = clock;
         this.config = config;
+    }
+
+    /** エンジンの診断ログの出し先。以後に作るエンジンに効く(個人再生は最初の操作で作られる)。 */
+    public void setTrace(Consumer<String> trace) {
+        this.trace = trace;
     }
 
     // ---- 外から呼ばれる入口 ----
@@ -657,6 +663,7 @@ public final class PlayerSoundService {
                             host.tell(id, "最後の曲が終わったので、停止しました。");
                         }
                     }));
+            p.engine.setTrace("個人:" + host.nameOf(id), trace);
             return p;
         });
     }
@@ -683,6 +690,7 @@ public final class PlayerSoundService {
                         tellAll(s.listeners, "共有の最後の曲が終わったので、停止しました。");
                     }
                 }));
+        s.engine.setTrace("共有", trace);
         suspendPersonal(starter);
         s.listeners.add(starter);
         shared = s;
