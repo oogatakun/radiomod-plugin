@@ -426,7 +426,18 @@ class PlayerSoundServiceTest {
         assertEquals("キューは空です。", host.lastChat(bob)); // bob 自身の個人キュー
         assertEquals(buttonsBefore, host.buttons.get(bob).size()); // 確認のボタンは出ない
         cmd(bob, "list", "score");
-        assertTrue(host.scores.containsKey(bob));
+        assertEquals("キューが空です", host.lastChat(bob)); // 空のキューでは表示せず、切り替え状態も変えない
+        assertFalse(host.scores.containsKey(bob));
+        assertEquals(buttonsBefore, host.buttons.get(bob).size());
+    }
+
+    @Test
+    void 空のキューでlist_scoreを打っても_次に曲を入れたあとの実行で表示される() {
+        cmd(alice, "list", "score");
+        assertFalse(host.scores.containsKey(alice));
+        cmd(alice, "play", A_URL);
+        cmd(alice, "list", "score");
+        assertTrue(host.scores.containsKey(alice));
     }
 
     @Test
