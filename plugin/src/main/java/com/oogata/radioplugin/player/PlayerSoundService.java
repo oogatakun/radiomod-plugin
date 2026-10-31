@@ -125,10 +125,18 @@ public final class PlayerSoundService {
         return shared != null && shared.listeners.contains(player);
     }
 
-    /** mod から HELLO が届いた。すでに共有が始まっていれば、お知らせを出す。 */
+    /**
+     * mod から HELLO が届いた。個人再生と(聞いている)共有の今の状態を送り直し、
+     * すでに共有が始まっていて聞いていなければ、お知らせを出す。
+     */
     public void onHello(UUID player) {
-        if (shared != null && shared.engine.state() != PlaybackEngine.State.STOPPED
-                && !shared.listeners.contains(player)) {
+        Personal p = personals.get(player);
+        if (p != null) {
+            sendState(player, Messages.Slot.PERSONAL_SLOT, p.engine);
+        }
+        if (shared != null && shared.listeners.contains(player)) {
+            sendState(player, Messages.Slot.SHARED_SLOT, shared.engine);
+        } else if (shared != null && shared.engine.state() != PlaybackEngine.State.STOPPED) {
             announceShareTo(player);
         }
     }
@@ -306,16 +314,20 @@ public final class PlayerSoundService {
     }
 
     private void sendSharedState(UUID player) {
-        PlaybackEngine e = shared.engine;
+        sendState(player, Messages.Slot.SHARED_SLOT, shared.engine);
+    }
+
+    /** そのエンジンの今の状態を、1人に送る。再生中なら PLAY、一時停止中なら PLAY のあとに PAUSE。 */
+    private void sendState(UUID player, Messages.Slot slot, PlaybackEngine e) {
         Track track = e.currentTrack();
         if (track == null || e.state() == PlaybackEngine.State.STOPPED) {
             return;
         }
         long origin = e.state() == PlaybackEngine.State.PAUSED
                 ? clock.nowMs() + config.engine().startLeadMs() - e.positionMs() : e.originMs();
-        host.send(player, playMessage(Messages.Slot.SHARED_SLOT, track, e.trackId(), origin));
+        host.send(player, playMessage(slot, track, e.trackId(), origin));
         if (e.state() == PlaybackEngine.State.PAUSED) {
-            host.send(player, new Messages.Pause(Messages.Slot.SHARED_SLOT, e.positionMs()));
+            host.send(player, new Messages.Pause(slot, e.positionMs()));
         }
     }
 

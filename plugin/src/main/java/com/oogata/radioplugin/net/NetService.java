@@ -1,9 +1,7 @@
 package com.oogata.radioplugin.net;
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -14,8 +12,6 @@ import org.bukkit.plugin.messaging.PluginMessageListener;
 
 /** radiomod:main の送受信と、mod 導入済みプレイヤーの記録。 */
 public final class NetService implements PluginMessageListener, Listener {
-
-    private static final long START_LEAD_MS = 500;
 
     /** 受信したメッセージを、再生側（player/ など）へ渡す。 */
     public interface Handler {
@@ -28,10 +24,35 @@ public final class NetService implements PluginMessageListener, Listener {
 
     private final Plugin plugin;
     private final List<Handler> handlers = new CopyOnWriteArrayList<>();
-    private final Set<UUID> modPlayers = ConcurrentHashMap.newKeySet();
+    private final ProtocolHandler protocol;
 
     public NetService(Plugin plugin) {
         this.plugin = plugin;
+        this.protocol = new ProtocolHandler(
+                (id, message) -> {
+                    Player p = plugin.getServer().getPlayer(id);
+                    if (p != null) {
+                        p.sendPluginMessage(plugin, Messages.CHANNEL, Codec.encode(message));
+                    }
+                },
+                System::currentTimeMillis, plugin.getLogger()::info, plugin.getLogger()::warning,
+                new ProtocolHandler.Events() {
+                    @Override
+                    public void hello(UUID id) {
+                        Player p = plugin.getServer().getPlayer(id);
+                        if (p != null) {
+                            handlers.forEach(h -> h.onHello(p));
+                        }
+                    }
+
+                    @Override
+                    public void error(UUID id, Messages.Error error) {
+                        Player p = plugin.getServer().getPlayer(id);
+                        if (p != null) {
+                            handlers.forEach(h -> h.onError(p, error));
+                        }
+                    }
+                });
     }
 
     public void register() {
@@ -43,7 +64,7 @@ public final class NetService implements PluginMessageListener, Listener {
     public void unregister() {
         plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin, Messages.CHANNEL);
         plugin.getServer().getMessenger().unregisterIncomingPluginChannel(plugin, Messages.CHANNEL, this);
-        modPlayers.clear();
+        protocol.clear();
     }
 
     public void addHandler(Handler handler) {
@@ -51,7 +72,7 @@ public final class NetService implements PluginMessageListener, Listener {
     }
 
     public boolean hasMod(Player player) {
-        return modPlayers.contains(player.getUniqueId());
+        return protocol.hasMod(player.getUniqueId());
     }
 
     /** mod 導入済みのプレイヤーにだけ送る。未導入者には何も送らない。 */
@@ -74,28 +95,11 @@ public final class NetService implements PluginMessageListener, Listener {
             plugin.getLogger().warning(player.getName() + " から読めないメッセージ: " + e.getMessage());
             return;
         }
-        if (message instanceof Messages.Hello hello) {
-            onHello(player, hello);
-        } else if (message instanceof Messages.Error error) {
-            handlers.forEach(h -> h.onError(player, error));
-        } else {
-            plugin.getLogger().fine(player.getName() + " から未処理のメッセージ: " + message);
-        }
-    }
-
-    private void onHello(Player player, Messages.Hello hello) {
-        modPlayers.add(player.getUniqueId());
-        plugin.getLogger().info("HELLO を受信: " + player.getName() + " (mod " + hello.modVersion()
-                + ", protocol " + hello.protocolVersion() + ")");
-
-        // G1 の疎通確認用。ステップ3で外す。
-        send(player, new Messages.Play(Messages.Slot.PERSONAL_SLOT, 0L, "test://hello", "ping", -1L,
-                System.currentTimeMillis() + START_LEAD_MS, null));
-        handlers.forEach(h -> h.onHello(player));
+        protocol.onMessage(player.getUniqueId(), player.getName(), message);
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        modPlayers.remove(event.getPlayer().getUniqueId());
+        protocol.remove(event.getPlayer().getUniqueId());
     }
 }
