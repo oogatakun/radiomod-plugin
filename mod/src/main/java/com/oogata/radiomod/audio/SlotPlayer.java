@@ -74,6 +74,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private long stateSinceNanos = System.nanoTime();
     private State trackedState = State.IDLE;
     private String lastGate = "-";
+    private int discardedBuffers;
     private long firstFrameTimecode = -1;
     private long gateDesiredMs = -1;
     private long pinnedSinceNanos;
@@ -169,7 +170,8 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 } else {
                     state = queued.isEmpty() ? State.BUFFERING : State.PLAYING;
                     if (state == State.PLAYING && source != 0) {
-                        AL10.alSourcePlay(source);
+                        position.start();
+                AL10.alSourcePlay(source);
                     }
                 }
             }
@@ -364,6 +366,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
             // 一度も鳴らしていない音源では、積んだバッファが「処理済み」にならず、alSourceUnqueueBuffers が
             // 使えない（AL_INVALID_OPERATION）。止めた音源から全バッファを外すには AL_BUFFER = 0 を使う。
             AL10.alSourcei(source, AL10.AL_BUFFER, 0);
+            discardedBuffers += queued.size();
             queued.clear();
             freeBuffers.clear();
             for (int b : allBuffers) {
@@ -538,7 +541,8 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 throw AudioFailure.fetch("音声が届きません（" + BUFFERING_TIMEOUT_NANOS / 1_000_000_000L + "秒待っても、鳴らせる音声が溜まりませんでした）");
             }
             RadioMod.LOGGER.warn("[{}] 準備の待ち合わせが長引いたため、いまの位置から鳴らします ({})", describe(), diagnostics());
-            AL10.alSourcePlay(source);
+            position.start();
+                AL10.alSourcePlay(source);
             state = State.PLAYING;
             lastDriftNanos = now;
         }
@@ -548,12 +552,14 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
 
         if (state == State.BUFFERING && (queued.size() >= PREBUFFER || (trackDone && !queued.isEmpty()))) {
             if (startGateOpen()) {
+                position.start();
                 AL10.alSourcePlay(source);
                 state = State.PLAYING;
                 lastDriftNanos = now;
-                RadioMod.LOGGER.info("[{}] 鳴らし始め: 鳴らすべき位置={}ms 準備できた位置(要求位置+再生済み)={}ms 最初のフレームのタイムコード={}ms 速度={} AL_PITCH={} キュー={} 読み直し={}回",
+                RadioMod.LOGGER.info("[{}] 鳴らし始め: 鳴らすべき位置={}ms 準備できた位置(要求位置+再生済み)={}ms 最初のフレームのタイムコード={}ms 速度={} AL_PITCH={} キュー={} 読み直し={}回 再生済み={}フレーム 破棄したバッファ={}個",
                         describe(), gateDesiredMs, gateReadyMs, firstFrameTimecode, speed.rate(), AL10.alGetSourcef(source, AL10.AL_PITCH),
-                        queued.size(), gate.seeks());
+                        queued.size(), gate.seeks(), position.processedFrames(), discardedBuffers);
+                discardedBuffers = 0;
             }
         } else if (state == State.PLAYING) {
             int alState = AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE);

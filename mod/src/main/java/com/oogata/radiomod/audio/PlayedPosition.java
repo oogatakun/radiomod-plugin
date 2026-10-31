@@ -13,6 +13,7 @@ public final class PlayedPosition {
     private long baseMs;
     private boolean based;
     private long processedFrames;
+    private boolean started;
 
     public PlayedPosition(int sampleRate) {
         if (sampleRate <= 0) {
@@ -26,6 +27,7 @@ public final class PlayedPosition {
         baseMs = requestedStartMs;
         based = false;
         processedFrames = 0;
+        started = false;
     }
 
     public boolean isBased() {
@@ -43,13 +45,30 @@ public final class PlayedPosition {
         based = true;
     }
 
-    /** 再生し終えたバッファのフレーム数を足す。 */
-    public void addProcessed(int frames) {
-        processedFrames += frames;
+    /**
+     * 音源で実際に鳴らし始めた（alSourcePlay を呼んだ）。reset から始めるまでの間は、まだ1サンプルも鳴っていないので、
+     * 再生済みの数も音源の位置も数えない（キューに積んだバッファや、音源側の古い値を、再生済みに数えないため）。
+     */
+    public void start() {
+        started = true;
     }
 
-    /** offsetFrames は、いま鳴っているバッファの先頭からのフレーム数。 */
+    public boolean isStarted() {
+        return started;
+    }
+
+    /** 再生し終えたバッファのフレーム数を足す。鳴らし始める前は数えない。 */
+    public void addProcessed(int frames) {
+        if (started) {
+            processedFrames += frames;
+        }
+    }
+
+    /** offsetFrames は、いま鳴っているバッファの先頭からのフレーム数。鳴らし始める前は、基準位置のまま。 */
     public long positionMs(long offsetFrames) {
+        if (!started) {
+            return baseMs;
+        }
         return baseMs + (processedFrames + Math.max(0, offsetFrames)) * 1000L / sampleRate;
     }
 
