@@ -1,3 +1,30 @@
-# true にすると、TIME / TIME_REQ（時計合わせ。量が多い）もログに出す。
+# radioplugin の設定。変えたあとはサーバーを再起動する。
+
+# ラジオの音が聞こえる範囲(ブロック)。この外では、mod が音声の取得を止める。
+radio-range: 24
+
+# 基準時刻(SYNC)を再通知する間隔(秒)。
+sync-interval-seconds: 30
+
+# 曲を始めるとき、基準時刻を先にずらす時間(ms)。全員が同時に始めるため。
+start-lead-ms: 500
+
+# 曲が始まったときの通知先。chat / actionbar / none
+announce: actionbar
+
+# プレイリストを展開するときの上限曲数。
+max-playlist-size: 100
+
+# 連続でこの回数、取得に失敗したら停止する。
+max-consecutive-errors: 3
+
+# ラジオの見た目。models/<radio-model>.mcfunction があればそのモデル、なければ簡易モデル。
+# radio-model-method: auto(自動) / api / command
+radio-model: luxuryboombox
+radio-model-method: auto
+# パーツの表示距離(view range)。小さくすると軽くなる。
+radio-view-range: 0.5
+
+# true にすると、TIME / TIME_REQ(時計合わせ。量が多い)もログに出す。
 # それ以外の mod とのメッセージと再生エンジンの状態変化は、常に INFO で出る。
 debug-net: false
