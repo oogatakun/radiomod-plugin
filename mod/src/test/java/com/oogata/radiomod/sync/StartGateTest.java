@@ -124,4 +124,61 @@ class StartGateTest {
             assertTrue(seeks[0] <= StartGate.MAX_SEEKS, "takes=" + takes + " seeks=" + seeks[0]);
         }
     }
+
+    @Test
+    void 読み直しの上限のあとに大きく先へ進んでいても_待ち続けずに鳴らす() {
+        StartGate g = new StartGate();
+        long now = 0;
+        // 読み直しても狙った位置に着かず、いつも準備の位置が 5 秒先になる音源
+        int seeks = 0;
+        StartGate.Action last = null;
+        for (int i = 0; i < 20 && last != StartGate.Action.PLAY; i++) {
+            now += 600;
+            StartGate.Decision d = g.decide(100 + now, 100 + now + 5000, true, now);
+            last = d.action();
+            if (last == StartGate.Action.SEEK) {
+                seeks++;
+            }
+        }
+        assertEquals(StartGate.Action.PLAY, last);
+        assertEquals(StartGate.MAX_SEEKS, seeks);
+    }
+
+    @Test
+    void 上限のあとでも_少し先へ進んでいるだけなら追いつくまで待つ() {
+        StartGate g = new StartGate();
+        long now = 0;
+        for (int i = 0; i < StartGate.MAX_SEEKS; i++) {
+            now += 600;
+            assertEquals(StartGate.Action.SEEK, g.decide(1000 + now, 0, true, now).action());
+        }
+        assertEquals(StartGate.Action.WAIT, g.decide(1000 + now, 1000 + now + 500, true, now + 600).action());
+        assertEquals(StartGate.Action.PLAY, g.decide(1000 + now, 1000 + now, true, now + 600).action());
+    }
+
+    /** 1回目は間に合って始まり、停止のあとの2回目は3回続けて遅れる。どちらも最後は PLAY になること。 */
+    @Test
+    void 停止のあとの再生で_3回続けて合わせ直しになっても鳴り始める() {
+        StartGate g = new StartGate();
+        // 1回目: 1回の読み直しで合う
+        assertEquals(StartGate.Action.SEEK, g.decide(500, 0, true, 1000).action());
+        assertEquals(StartGate.Action.PLAY, g.decide(1000, 1000, true, 1500).action());
+        // 停止 → 再生
+        g.reset();
+        long now = 20_000;
+        int seeks = 0;
+        StartGate.Action action = null;
+        for (int i = 0; i < 10 && action != StartGate.Action.PLAY; i++) {
+            now += 500;
+            // 準備の位置はいつも鳴らすべき位置より 3 秒先（YouTube で読み直しが着かない場合を想定）
+            StartGate.Decision d = g.decide(now - 20_000, now - 20_000 + 3000, true, now);
+            action = d.action();
+            if (action == StartGate.Action.SEEK) {
+                seeks++;
+            }
+        }
+        assertEquals(StartGate.MAX_SEEKS, seeks);
+        assertEquals(StartGate.Action.PLAY, action);
+        assertEquals(StartGate.MAX_SEEKS, g.seeks());
+    }
 }

@@ -41,6 +41,8 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private static final int PREBUFFER = 3;
     private static final int QUEUE_TARGET = 8;
     private static final long TICK_MS = 10;
+    /** BUFFERING がこれより長く続いたら、止まっているとみなして強制的に先へ進める。 */
+    private static final long BUFFERING_TIMEOUT_NANOS = 8_000_000_000L;
     /** ずれを測って速度の目標を決める間隔。 */
     private static final long DRIFT_INTERVAL_NANOS = 1_000_000_000L;
 
@@ -68,6 +70,9 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private boolean pauseRequested;
     private long pausePositionMs = -1;
     private boolean announced;
+    private long stateSinceNanos = System.nanoTime();
+    private State trackedState = State.IDLE;
+    private String lastGate = "-";
     private long lastDriftNanos;
 
     private long alContext;
@@ -233,7 +238,8 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
 
     /** 同期の確認用。ずれ = 鳴らすべき位置 - 鳴っている位置（正なら遅れている）。位置が分からないものは -1。 */
     public record Snapshot(State state, long desiredMs, long actualMs, double speed, boolean correcting,
-                           boolean live, boolean synced, int gateSeeks) {
+                           boolean live, boolean synced, int gateSeeks,
+                           int queued, long stateMs, String lastGate) {
     }
 
     public Snapshot snapshot() {
@@ -242,7 +248,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
             long actual = track == null || state == State.IDLE || state == State.LOADING
                     ? -1 : position.positionMs(offsetFrames());
             return new Snapshot(state, desired, actual, speed.rate(), drift.isCorrecting(), live, target != null,
-                    gate.seeks());
+                    gate.seeks(), queued.size(), (System.nanoTime() - stateSinceNanos) / 1_000_000L, lastGate);
         }
     }
 
@@ -497,8 +503,21 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
             freeBuffers.add(q[0]);
         }
 
+        if (state != trackedState) {
+            trackedState = state;
+            stateSinceNanos = now;
+        }
         if (state != State.PAUSED) {
             fill();
+        }
+        if (state == State.BUFFERING && now - stateSinceNanos > BUFFERING_TIMEOUT_NANOS) {
+            if (queued.isEmpty()) {
+                throw AudioFailure.fetch("音声が届きません（" + BUFFERING_TIMEOUT_NANOS / 1_000_000_000L + "秒待っても、鳴らせる音声が溜まりませんでした）");
+            }
+            RadioMod.LOGGER.warn("[{}] 準備の待ち合わせが長引いたため、いまの位置から鳴らします ({})", describe(), diagnostics());
+            AL10.alSourcePlay(source);
+            state = State.PLAYING;
+            lastDriftNanos = now;
         }
 
         AL10.alSourcef(source, AL10.AL_PITCH, (float) speed.step(dt));
@@ -536,6 +555,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         boolean canSeek = track != null && track.isSeekable();
         StartGate.Decision d = gate.decide(desired, position.positionMs(offsetFrames()), canSeek,
                 System.nanoTime() / 1_000_000L);
+        lastGate = d.action() + (d.action() == StartGate.Action.SEEK ? "→" + d.seekToMs() + "ms" : "");
         switch (d.action()) {
             case PLAY:
                 return true;

@@ -23,6 +23,8 @@ public final class StartGate {
     /** 読み直しの間に進む時間の見込みの最小値。曲の途中から鳴らし始めるときは、最初からこれだけ先を読む。 */
     public static final long INITIAL_LEAD_MS = 400;
     static final long MAX_LEAD_MS = 8000;
+    /** 読み直しの上限に達したあとに、準備の位置が先へ進んでいるとき、待ってよい最大の長さ。 */
+    public static final long MAX_WAIT_AFTER_LIMIT_MS = 1000;
     /** 読み直しは、1回の開始・再開につきこの回数まで。超えたら、準備できた位置から鳴らし、残りは速度の補正に任せる。 */
     public static final int MAX_SEEKS = 3;
     /** 読み直しの最小の間隔。連続で呼ばれても、この間は待つ。 */
@@ -68,7 +70,13 @@ public final class StartGate {
             return new Decision(Action.SEEK, desiredMs + leadMs);
         }
         if (diff < 0) {
-            return Decision.WAIT;
+            // 準備の位置のほうが先なら、鳴らすべき位置が追いつくまで待つ。ただし、読み直しの上限まで来ているのに
+            // 大きく先へ進んでいる（容器の都合で、読み直しが狙った位置に着かない音源など）ときは待たない。
+            // 待ち続けると鳴り始めないので、ずれたままでも鳴らす。
+            if (seeks < MAX_SEEKS || -diff <= MAX_WAIT_AFTER_LIMIT_MS) {
+                return Decision.WAIT;
+            }
+            return Decision.PLAY;
         }
         // 上限まで読み直しても遅れているときも、ここで鳴らす。残りのずれは速度の補正に任せる。
         return Decision.PLAY;
