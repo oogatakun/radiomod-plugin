@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import com.oogata.radioplugin.player.PlaybackEngine;
 import java.util.function.Consumer;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
@@ -128,6 +129,29 @@ public final class RadioManager {
             }
             p.spawnParticle(Particle.VILLAGER_HAPPY, l, 8, 0.25, 0.4, 0.25, 0);
         }
+    }
+
+    // ---- keep ----
+
+    /** 再生状態が変わった。keep のラジオだけ、radios.yml に保存する。 */
+    public void playbackChanged(UUID radioId, PlaybackEngine.Snapshot snapshot) {
+        Radio r = store.get(radioId);
+        if (r != null && r.keep()) {
+            r.setSaved(snapshot);
+            try {
+                store.save();
+            } catch (IOException e) {
+                plugin.getLogger().severe("radios.yml を保存できませんでした: " + e.getMessage());
+            }
+        }
+    }
+
+    /** keep を切り替える。入れたときは今の再生状態を保存し、切ったときは保存した内容を消す。 */
+    public boolean toggleKeep(Radio r, PlaybackEngine.Snapshot current) {
+        r.setKeep(!r.keep());
+        r.setSaved(r.keep() ? current : null);
+        save();
+        return r.keep();
     }
 
     // ---- 操作 ----
