@@ -67,6 +67,11 @@ public final class RadioPlace {
         return range;
     }
 
+    /** 聞く側の位置。分からなければ null。診断用。 */
+    public ListenerPos listenerPosition() {
+        return listener.position();
+    }
+
     /** 聞く側との距離。聞く側の位置が分からないときと、別の次元にいるときは NaN。 */
     public double distance() {
         ListenerPos p = listener.position();

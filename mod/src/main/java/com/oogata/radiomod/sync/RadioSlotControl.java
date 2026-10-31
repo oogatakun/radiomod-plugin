@@ -2,6 +2,7 @@ package com.oogata.radiomod.sync;
 
 import com.oogata.radiomod.net.Messages;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 /**
@@ -23,6 +24,7 @@ public final class RadioSlotControl implements SlotControl {
     private final RadioPlace place;
     private final BooleanSupplier enabled;
     private final Runnable onDispose;
+    private final Consumer<String> log;
 
     private boolean wanted;
     private String url;
@@ -30,8 +32,12 @@ public final class RadioSlotControl implements SlotControl {
     private boolean paused;
     private long pausedPositionMs;
     private boolean active;
+    /** 診断ログ: 最後に出した範囲の判定。変わったときと、PLAY の直後だけ出す。 */
+    private String lastReported;
 
-    public RadioSlotControl(SlotControl inner, RadioPlace place, BooleanSupplier enabled, Runnable onDispose) {
+    public RadioSlotControl(SlotControl inner, RadioPlace place, BooleanSupplier enabled, Runnable onDispose,
+                            Consumer<String> log) {
+        this.log = log;
         this.inner = inner;
         this.place = place;
         this.enabled = enabled;
@@ -59,6 +65,7 @@ public final class RadioSlotControl implements SlotControl {
         this.desired = desiredPositionMs;
         this.wanted = true;
         this.paused = false;
+        this.lastReported = null;
         evaluate();
     }
 
@@ -114,6 +121,7 @@ public final class RadioSlotControl implements SlotControl {
             return;
         }
         boolean near = near();
+        report(near);
         if (near && !active) {
             inner.play(url, desired);
             active = true;
@@ -124,6 +132,20 @@ public final class RadioSlotControl implements SlotControl {
             inner.stop();
             active = false;
         }
+    }
+
+    private void report(boolean near) {
+        RadioPlace.ListenerPos p = place.listenerPosition();
+        String key = near + "/" + enabled.getAsBoolean() + "/" + (p == null ? "-" : p.dimension())
+                + "/" + (Double.isNaN(place.distance()) ? "NaN" : "d");
+        if (key.equals(lastReported)) {
+            return;
+        }
+        lastReported = key;
+        log.accept("ラジオの範囲判定: 取得する=" + near + " ラジオ音オン=" + enabled.getAsBoolean()
+                + " ラジオの次元=" + place.dimension() + " 聞く側の次元=" + (p == null ? "(ワールド外)" : p.dimension())
+                + " 距離=" + (Double.isNaN(place.distance()) ? "計算できない" : String.format("%.1f", place.distance()))
+                + " 範囲=" + place.range() + " 置き場所=" + place.x() + "," + place.y() + "," + place.z());
     }
 
     private boolean near() {

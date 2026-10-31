@@ -65,7 +65,8 @@ public final class AudioEngine implements AutoCloseable {
             RadioPlace place = new RadioPlace(() -> radioListener.position());
             SlotPlayer player = new SlotPlayer(s, () -> gainFor(s.slotType()), new Forwarder(), place);
             players.put(s, player);
-            return new RadioSlotControl(player, place, () -> volumes[Messages.Slot.RADIO] > 0, () -> disposeRadio(s));
+            return new RadioSlotControl(player, place, () -> volumes[Messages.Slot.RADIO] > 0, () -> disposeRadio(s),
+                    line -> RadioMod.LOGGER.info("[{}] {}", s.radioId(), line));
         });
     }
 

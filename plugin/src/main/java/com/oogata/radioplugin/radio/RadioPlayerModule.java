@@ -80,7 +80,20 @@ public final class RadioPlayerModule implements RadioPlayerService.Radios, NetSe
         }
         float range = (float) plugin.getConfig().getDouble("radio-range", 24);
         // 音の出どころは、設置位置の少し上（モデルの中ほど）に置く
-        return new Messages.RadioTarget(world.getKey().toString(), r.x(), r.y() + 0.5, r.z(), range);
+        return new Messages.RadioTarget(dimensionOf(world), r.x(), r.y() + 0.5, r.z(), range);
+    }
+
+    /**
+     * mod が見ている次元の名前(minecraft:overworld など)にそろえる。World#getKey はワールドのフォルダ名に
+     * 由来することがあり、mod 側の次元名と一致しないため、標準の3つは環境から決める。
+     */
+    public static String dimensionOf(World world) {
+        return switch (world.getEnvironment()) {
+            case NORMAL -> "minecraft:overworld";
+            case NETHER -> "minecraft:the_nether";
+            case THE_END -> "minecraft:the_end";
+            default -> world.getKey().toString();
+        };
     }
 
     @Override

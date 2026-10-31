@@ -52,7 +52,7 @@ class RadioSlotControlTest {
         disposed = 0;
         listenerAt("minecraft:overworld", 100);
         RadioPlace place = new RadioPlace(() -> listener);
-        control = new RadioSlotControl(inner, place, () -> enabled, () -> disposed++);
+        control = new RadioSlotControl(inner, place, () -> enabled, () -> disposed++, line -> { });
         control.place(new Messages.RadioTarget("minecraft:overworld", 0, 0, 0, 24));
     }
 
