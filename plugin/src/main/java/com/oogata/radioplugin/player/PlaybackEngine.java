@@ -270,6 +270,28 @@ public final class PlaybackEngine {
     }
 
     /**
+     * キューの from 番目の曲を、to 番目へ動かす(プレーヤー画面のドラッグ)。再生は止めない。
+     * 鳴っている曲は、並べ替えたあとも同じ曲のまま(何曲目かの番号が、それに合わせて変わる)。
+     */
+    public Result move(int from, int to) {
+        int n = queue.size();
+        if (from < 0 || from >= n || to < 0 || to >= n || from == to) {
+            return Result.EMPTY;
+        }
+        Track moved = queue.remove(from);
+        queue.add(to, moved);
+        if (index == from) {
+            index = to;
+        } else if (from < index && to >= index) {
+            index--;
+        } else if (from > index && to <= index) {
+            index++;
+        }
+        trace("move(" + from + "→" + to + ")");
+        return Result.OK;
+    }
+
+    /**
      * 今の曲の再生位置を動かす(プレーヤー画面の進行バー)。ライブや停止中は何もしない。
      * SYNC では位置を飛ばせない(補正は速度の微調整だけ)ので、同じ曲の PLAY を、動かし先から鳴るように作った
      * 新しい基準時刻で送り直す。一時停止中なら、その位置で止めたままにする。

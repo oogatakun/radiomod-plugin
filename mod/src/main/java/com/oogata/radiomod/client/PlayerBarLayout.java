@@ -6,7 +6,7 @@ package com.oogata.radiomod.client;
  */
 public record PlayerBarLayout(int x, int y, int width, int height) {
 
-    public static final int HEIGHT = 38;
+    public static final int HEIGHT = 48;
     public static final int MAX_WIDTH = 230;
     /** これより狭くはしない。右が足りなければ、ホットバーに重ねる。 */
     public static final int MIN_WIDTH = 110;

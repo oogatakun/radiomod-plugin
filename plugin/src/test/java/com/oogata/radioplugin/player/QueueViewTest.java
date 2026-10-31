@@ -134,4 +134,41 @@ class QueueViewTest {
         assertEquals(PlaybackEngine.Result.NOT_PLAYING, engine.seek(1000));
         assertEquals(List.of(), out.events);
     }
+
+    @Test
+    void キューの並べ替えは_鳴っている曲を同じ曲のまま追いかける() {
+        engine.playPlaylist(List.of(song("a", 1000), song("b", 2000), song("c", 3000), song("d", 4000)), false);
+        engine.skip(); // b を再生中(index 1)
+        // 鳴っている曲を動かす: b を末尾へ
+        QueueView.apply(engine, control(Messages.Control.MOVE, Messages.Control.packMove(1, 3)));
+        assertEquals(List.of("a", "c", "d", "b"), titles());
+        assertEquals(3, engine.index());
+        // 鳴っている曲より後ろの曲を、前へ飛び越させる: c(1) を先頭(0)へ → b は index 3 のまま
+        QueueView.apply(engine, control(Messages.Control.MOVE, Messages.Control.packMove(1, 0)));
+        assertEquals(List.of("c", "a", "d", "b"), titles());
+        assertEquals(3, engine.index());
+        // 前にあった曲を、鳴っている曲の後ろへ: c(0) を最後(3)へ → b は index 2 に繰り上がる
+        QueueView.apply(engine, control(Messages.Control.MOVE, Messages.Control.packMove(0, 3)));
+        assertEquals(List.of("a", "d", "b", "c"), titles());
+        assertEquals(2, engine.index());
+        assertEquals("b", engine.currentTrack().title());
+        // 後ろの曲を、鳴っている曲の前へ: c(3) を 0 へ → b は index 3 に繰り下がる
+        QueueView.apply(engine, control(Messages.Control.MOVE, Messages.Control.packMove(3, 0)));
+        assertEquals(List.of("c", "a", "d", "b"), titles());
+        assertEquals("b", engine.currentTrack().title());
+        assertEquals(State.PLAYING, engine.state());
+    }
+
+    @Test
+    void 範囲外や同じ場所への並べ替えは何もしない() {
+        engine.playPlaylist(List.of(song("a", 1000), song("b", 2000)), false);
+        QueueView.apply(engine, control(Messages.Control.MOVE, Messages.Control.packMove(0, 0)));
+        QueueView.apply(engine, control(Messages.Control.MOVE, Messages.Control.packMove(0, 5)));
+        QueueView.apply(engine, control(Messages.Control.MOVE, Messages.Control.packMove(7, 1)));
+        assertEquals(List.of("a", "b"), titles());
+    }
+
+    private List<String> titles() {
+        return engine.queue().stream().map(Track::title).toList();
+    }
 }

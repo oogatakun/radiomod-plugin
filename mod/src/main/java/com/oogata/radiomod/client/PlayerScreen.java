@@ -43,6 +43,12 @@ public final class PlayerScreen extends Screen {
     /** 動かしたあと、サーバーの返事で位置が変わるまで、動かし先を出しておく。 */
     private long previewMs = -1;
     private long previewUntilNanos;
+    /** キューの行を押している(ドラッグ中かもしれない)。押していなければ -1。 */
+    private int pressRow = -1;
+    private double pressY;
+    private boolean rowDragging;
+    /** ドラッグで、離したときに入る番号。 */
+    private int dropIndex;
     private String shownTitle = "";
     private long titleSinceNanos = System.nanoTime();
 
@@ -209,17 +215,29 @@ public final class PlayerScreen extends Screen {
                     && mouseY < listBottom();
             if (current) {
                 g.fill(l + 2, y, l + PANEL_W - 2, y + ROW_H, ROW_CURRENT);
-            } else if (hover) {
+            } else if (hover && !rowDragging) {
                 g.fill(l + 2, y, l + PANEL_W - 2, y + ROW_H, HOVER);
             }
             String dur = e.durationMs() < 0 ? "LIVE" : PlayerBarModel.time(e.durationMs());
             int durW = font.width(dur);
             String label = (current ? "> " : "") + (i + 1) + ". " + e.title();
             g.drawString(font, font.plainSubstrByWidth(label, PANEL_W - PAD * 2 - durW - 6), l + PAD, y + 4,
-                    current ? TEXT : 0xFFD0D0D0, false);
+                    rowDragging && i == pressRow ? 0xFF606060 : current ? TEXT : 0xFFD0D0D0, false);
             g.drawString(font, dur, l + PANEL_W - PAD - durW, y + 4, SUB_TEXT, false);
         }
+        if (rowDragging && count > 0) {
+            // 入る場所の線(下へ動かすときは、行の下。上へ動かすときは、行の上)
+            int lineY = top + (dropIndex - scroll) * ROW_H + (dropIndex > pressRow ? ROW_H : 0);
+            g.fill(l + 2, lineY - 1, l + PANEL_W - 2, lineY + 1, ACCENT);
+        }
         g.disableScissor();
+        if (rowDragging && q != null && pressRow >= 0 && pressRow < q.entries().size()) {
+            // つかんでいる曲を、カーソルについて動かす
+            int gy = mouseY - ROW_H / 2;
+            g.fill(l + 2, gy, l + PANEL_W - 2, gy + ROW_H, 0xC0553A44);
+            g.drawString(font, font.plainSubstrByWidth((pressRow + 1) + ". " + q.entries().get(pressRow).title(),
+                    PANEL_W - PAD * 2), l + PAD, gy + 4, TEXT, false);
+        }
         if (count > rows) { // スクロールの目印
             int barH = Math.max(8, (listBottom() - top) * rows / count);
             int barY = top + (listBottom() - top - barH) * scroll / Math.max(1, count - rows);
@@ -292,7 +310,10 @@ public final class PlayerScreen extends Screen {
         if (q != null && mx >= left() && mx < left() + PANEL_W && my >= listTop() && my < listBottom()) {
             int i = scroll + (int) ((my - listTop()) / ROW_H);
             if (i >= 0 && i < q.entries().size()) {
-                control(Messages.Control.JUMP, i);
+                pressRow = i; // 離したときに、動かしていなければ曲を再生、動かしていれば並べ替え
+                pressY = my;
+                rowDragging = false;
+                dropIndex = i;
             }
             return true;
         }
@@ -303,6 +324,23 @@ public final class PlayerScreen extends Screen {
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
         if (dragging && button == 0) {
             updateDrag(mx);
+            return true;
+        }
+        Messages.Queue q = QueueStore.get(slot);
+        if (pressRow >= 0 && button == 0 && q != null) {
+            if (!rowDragging && Math.abs(my - pressY) > 4) {
+                rowDragging = true;
+            }
+            if (rowDragging) {
+                if (my < listTop() + ROW_H / 2.0) {
+                    scroll--; // 上の端に近づけたら、一覧を上へ送る
+                } else if (my > listBottom() - ROW_H / 2.0) {
+                    scroll++;
+                }
+                int count = q.entries().size();
+                scroll = Math.max(0, Math.min(scroll, Math.max(0, count - visibleRows())));
+                dropIndex = Math.max(0, Math.min(count - 1, scroll + (int) Math.floor((my - listTop()) / ROW_H)));
+            }
             return true;
         }
         return super.mouseDragged(mx, my, button, dx, dy);
@@ -318,6 +356,20 @@ public final class PlayerScreen extends Screen {
                 previewMs = (long) (dragFraction * duration);
                 previewUntilNanos = System.nanoTime() + 1_500_000_000L; // サーバーが PLAY を送り直すまでの間
                 control(Messages.Control.SEEK, (int) Math.min(Integer.MAX_VALUE, previewMs));
+            }
+            return true;
+        }
+        if (pressRow >= 0 && button == 0) {
+            int from = pressRow;
+            boolean moved = rowDragging;
+            pressRow = -1;
+            rowDragging = false;
+            if (moved) {
+                if (dropIndex != from) {
+                    control(Messages.Control.MOVE, Messages.Control.packMove(from, dropIndex));
+                }
+            } else if (my >= listTop() && my < listBottom()) {
+                control(Messages.Control.JUMP, from);
             }
             return true;
         }

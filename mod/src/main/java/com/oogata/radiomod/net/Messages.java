@@ -171,7 +171,7 @@ public sealed interface Messages {
         }
     }
 
-    /** プレーヤー画面の操作。arg は、JUMP のときは曲の番号(0 始まり)、SEEK のときは位置(ms)で、それ以外は 0。 */
+    /** プレーヤー画面の操作。arg は、JUMP のときは曲の番号(0 始まり)、SEEK のときは位置(ms)、MOVE のときは移動元と移動先の番号で、それ以外は 0。 */
     record Control(Slot slot, byte action, int arg) implements Messages {
         public static final int TYPE = 0x83;
         /** 一時停止と再開の切り替え。 */
@@ -187,6 +187,12 @@ public sealed interface Messages {
         public static final byte REFRESH = 6;
         /** 再生位置を動かす。arg は動かし先の位置(曲の頭からのミリ秒)。 */
         public static final byte SEEK = 7;
+        /** キューの曲を並べ替える。arg は 移動元の番号を上位16ビット、移動先の番号を下位16ビットに入れた値(0 始まり)。 */
+        public static final byte MOVE = 8;
+
+        public static int packMove(int from, int to) {
+            return (from & 0xFFFF) << 16 | (to & 0xFFFF);
+        }
 
         @Override
         public int type() {

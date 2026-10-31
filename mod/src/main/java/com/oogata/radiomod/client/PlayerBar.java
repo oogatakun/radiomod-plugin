@@ -13,9 +13,10 @@ import net.minecraft.client.gui.GuiGraphics;
 public final class PlayerBar {
 
     private static final int BUTTON_W = 18;
-    /** 2段目(時間とボタン)の、バーの上端からの位置と高さ。 */
-    private static final int ROW2_TOP = 16;
+    /** 2段目(ボタン)の、バーの上端からの位置と高さ。3段目(時間)はその下。 */
+    private static final int ROW2_TOP = 15;
     private static final int ROW2_H = 18;
+    private static final int TIME_TOP = 36;
     /** 右から: 閉じる、キューを見る、次へ、再生/一時停止、前へ。 */
     private static final int BUTTONS = 5;
     private static final int HOVER = 0x60FFFFFF;
@@ -58,7 +59,7 @@ public final class PlayerBar {
         Font font = Minecraft.getInstance().font;
         g.fill(l.x(), l.y(), l.x() + l.width(), l.y() + l.height(), 0xD0181818);
 
-        // 1段目: タイトル(長ければ流す)。2段目: 時間と、ボタン
+        // 1段目: タイトル(長ければ流す)。2段目: ボタン。3段目: 時間
         String title = (n.slot().slotType() == Messages.Slot.RADIO ? "[ラジオ] " : "") + n.title();
         drawMarquee(g, font, title, l.x() + 8, l.x() + l.width() - 8, l.y() + 5);
 
@@ -76,7 +77,7 @@ public final class PlayerBar {
         String time = n.durationMs() > 0 && n.positionMs() >= 0
                 ? PlayerBarModel.time(n.positionMs()) + " / " + PlayerBarModel.time(n.durationMs())
                 : n.durationMs() < 0 ? "LIVE" : "";
-        g.drawString(font, time, l.x() + 8, rowTop + 5, 0xFFA0A0A0, false);
+        g.drawString(font, time, l.x() + 8, l.y() + TIME_TOP, 0xFFA0A0A0, false);
 
         // 進行バー
         g.fill(l.x(), l.y() + l.height() - 2, l.x() + l.width(), l.y() + l.height(), 0xFF404040);
