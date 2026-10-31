@@ -56,6 +56,17 @@
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>true</filtering>
+                <excludes>
+                    <exclude>models/**</exclude>
+                </excludes>
+            </resource>
+            <!-- 同梱のモデル(BDEngine のコマンド)は、@ や ${ を含みうるので、置き換えずにそのまま入れる -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <includes>
+                    <include>models/**</include>
+                </includes>
             </resource>
         </resources>
         <plugins>

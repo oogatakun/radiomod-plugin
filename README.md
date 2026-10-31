@@ -20,7 +20,7 @@ mod を入れていないプレイヤーも、音が聞こえないだけで、�
 1. `plugin/target/radioplugin-0.1.0.jar` をサーバーの `plugins/` に入れる。
 2. `mod/build/libs/radiomod-0.1.0.jar` を、音を聞く各プレイヤーの `mods/` に入れる(サーバーには入れない)。
 3. サーバーを起動する。`plugins/RadioPlugin/config.yml` ができる。
-4. ラジオの見た目に BDEngine のモデルを使うときは、`create.mcfunction` を `plugins/RadioPlugin/models/` に置く(例: `models/luxuryboombox.mcfunction`)。
+4. ラジオのモデル `luxuryboombox` は jar に同梱していて、初回起動時に `plugins/RadioPlugin/models/` へ自動で出る(すでにあるファイルは上書きしない)。ほかの BDEngine のモデルを使うときは、`create.mcfunction` をそこに置き、`config.yml` の `radio-model` を変える。
 
 ## ビルド
 

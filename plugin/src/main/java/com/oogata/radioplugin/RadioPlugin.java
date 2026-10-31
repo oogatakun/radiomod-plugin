@@ -18,6 +18,7 @@ public final class RadioPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        saveBundledModels();
         net = new NetService(this);
         net.register();
 
@@ -45,6 +46,16 @@ public final class RadioPlugin extends JavaPlugin {
         }
         if (net != null) {
             net.unregister();
+        }
+    }
+
+    /** jar に同梱したモデルを、plugins/RadioPlugin/models/ に出す。すでにあるファイル(手で直したものなど)は上書きしない。 */
+    private void saveBundledModels() {
+        for (String name : new String[] {"luxuryboombox"}) {
+            String path = "models/" + name + ".mcfunction";
+            if (!new java.io.File(getDataFolder(), path).exists()) {
+                saveResource(path, false);
+            }
         }
     }
 }
