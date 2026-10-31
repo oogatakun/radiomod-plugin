@@ -18,6 +18,7 @@ rem (client game folders are under the launcher: ...\.numapotelauncher\instances
 set "SERVER_PATTERN=F:\minecraftserver\servers\???"
 set "CLIENT1_PATTERN=C:\Users\4jskk\AppData\Roaming\.numapotelauncher\instances\??-test-radiomod"
 set "CLIENT2_PATTERN=C:\Users\4jskk\AppData\Roaming\.numapotelauncher\instances\??-test-radiomod-2"
+set "CLIENT3_PATTERN=C:\Users\4jskk\AppData\Roaming\.numapotelauncher\instances\numahub-1.20.1"
 rem Set MVN to the full path of mvn.cmd to override the automatic search.
 set "MVN="
 rem -----------------------------------
@@ -105,6 +106,7 @@ if "%DO_DEPLOY%"=="1" (
     if "%DO_PLUGIN%"=="1" call :deploy "%ROOT%plugin\target\radioplugin-0.1.0.jar" "%SERVER_PATTERN%" plugins
     if "%DO_MOD%"=="1" call :deploy "%ROOT%mod\build\libs\radiomod-0.1.0.jar" "%CLIENT1_PATTERN%" mods
     if "%DO_MOD%"=="1" call :deploy "%ROOT%mod\build\libs\radiomod-0.1.0.jar" "%CLIENT2_PATTERN%" mods
+    if "%DO_MOD%"=="1" call :deploy "%ROOT%mod\build\libs\radiomod-0.1.0.jar" "%CLIENT3_PATTERN%" mods
 )
 
 echo.
