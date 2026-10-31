@@ -9,7 +9,6 @@ import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.source.bandcamp.BandcampAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager;
-import dev.lavalink.youtube.YoutubeAudioSourceManager;
 
 /**
  * LavaPlayer の設定。URL から音声を取得して、PCM（16bit・ステレオ・リトルエンディアン）にデコードする。
@@ -35,7 +34,7 @@ public final class Decoder {
             DefaultAudioPlayerManager m = new DefaultAudioPlayerManager();
             m.getConfiguration().setOutputFormat(FORMAT);
             try {
-                m.registerSourceManager(new YoutubeAudioSourceManager());
+                m.registerSourceManager(YoutubeClients.createSource());
             } catch (Throwable t) {
                 // YouTube が使えなくても、ほかの音源は鳴らせるようにする。
                 RadioMod.LOGGER.warn("YouTube の音源を初期化できませんでした: {}", t.toString());

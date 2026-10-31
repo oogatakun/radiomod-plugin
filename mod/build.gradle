@@ -35,6 +35,7 @@ minecraft {
 repositories {
     mavenCentral()
     maven { url = 'https://maven.lavalink.dev/releases' }
+    maven { url = 'https://maven.lavalink.dev/snapshots' }
 }
 
 // 音声の取得・デコードに使うライブラリ。jar-in-jar で mod の jar に同梱する。
@@ -55,7 +56,8 @@ dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
     audioLibs 'dev.arbjerg:lavaplayer:2.2.7'
-    audioLibs 'dev.lavalink.youtube:common:1.18.2'
+    // 正式版 1.18.2 は IOS・ANDROID が 400 で、WEB は署名の解読に失敗する。2026-09-17 の開発版（コミット固定）で IOS・ANDROID が通る。
+    audioLibs 'dev.lavalink.youtube:common:2be8e542d3f6f178e048dca565892684c2e40177-SNAPSHOT'
     compileOnly files({ configurations.audioLibs.files })
     testImplementation files({ configurations.audioLibs.files })
 
