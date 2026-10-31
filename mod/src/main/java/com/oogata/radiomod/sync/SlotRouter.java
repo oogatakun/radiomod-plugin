@@ -40,6 +40,7 @@ public final class SlotRouter {
 
     /** TIME 以外のサーバーからのメッセージを処理する。 */
     public synchronized void handle(Messages message) {
+        logReceived(message);
         if (message instanceof Messages.Play m) {
             play(m);
         } else if (message instanceof Messages.Pause m) {
@@ -66,6 +67,43 @@ public final class SlotRouter {
         } else {
             RadioMod.LOGGER.warn("想定外のメッセージを無視: {}", message);
         }
+    }
+
+    /** 受け取ったメッセージを1行で記録する（TIME は量が多いので出さない）。 */
+    private void logReceived(Messages message) {
+        Messages.Slot slot;
+        long origin = Long.MIN_VALUE;
+        String extra = "";
+        if (message instanceof Messages.Play m) {
+            slot = m.slot();
+            origin = m.originMs();
+            extra = " trackId=" + m.trackId() + " 長さ=" + m.durationMs() + "ms url=" + m.url();
+        } else if (message instanceof Messages.Pause m) {
+            slot = m.slot();
+            extra = " positionMs=" + m.positionMs();
+        } else if (message instanceof Messages.Resume m) {
+            slot = m.slot();
+            origin = m.originMs();
+        } else if (message instanceof Messages.Stop m) {
+            slot = m.slot();
+        } else if (message instanceof Messages.Sync m) {
+            slot = m.slot();
+            origin = m.originMs();
+        } else if (message instanceof Messages.Move m) {
+            slot = m.slot();
+            extra = " " + m.dimension() + " " + m.x() + "," + m.y() + "," + m.z();
+        } else {
+            return;
+        }
+        long now = clock.nowServerMs();
+        String nowText = now == ServerClock.UNSYNCED ? "未同期" : Long.toString(now);
+        String desired = now == ServerClock.UNSYNCED || origin == Long.MIN_VALUE
+                ? "-" : Long.toString(now - origin + manualOffsetMs.getAsLong());
+        SlotControl control = states.containsKey(slot) ? controls.apply(slot) : null;
+        RadioMod.LOGGER.info("受信 {} slot={} originMs={} サーバー時刻(推定)={} 鳴らすべき位置={}ms 状態={}{}",
+                message.getClass().getSimpleName().toUpperCase(java.util.Locale.ROOT), slot,
+                origin == Long.MIN_VALUE ? "-" : origin, nowText, desired,
+                control == null ? "-" : control.stateName(), extra);
     }
 
     private void play(Messages.Play m) {

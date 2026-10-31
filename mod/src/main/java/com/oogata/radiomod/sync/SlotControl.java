@@ -18,4 +18,9 @@ public interface SlotControl {
     void resume();
 
     void stop();
+
+    /** 診断ログ用の状態名（IDLE / LOADING / BUFFERING / PLAYING など）。 */
+    default String stateName() {
+        return "-";
+    }
 }

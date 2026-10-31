@@ -82,6 +82,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private final StringBuilder fpRms = new StringBuilder();
     private int fpBuffers;
     private int probeStage;
+    private long lastCheckedDesiredMs = -1;
     private long playStartNanos;
     private boolean recreateSource;
     private int discardedPrevious;
@@ -108,6 +109,13 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         this.slot = slot;
         this.gain = gain;
         this.listener = listener;
+    }
+
+    @Override
+    public String stateName() {
+        synchronized (lock) {
+            return state.name();
+        }
     }
 
     public Messages.Slot slot() {
@@ -216,6 +224,9 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         if (durationMs > 0) {
             to = Math.min(to, durationMs);
         }
+        RadioMod.LOGGER.info("[{}] seek 実行: 状態={} 現在の位置={}ms → {}ms {}", describe(), state,
+                position.positionMs(offsetFrames()), to,
+                state == State.PLAYING ? "（再生中の seek: 音が飛ぶ）" : "");
         flushOutput();
         trackDone = false;
         position.reset(to);
@@ -364,6 +375,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         gate.reset();
         pinnedSinceNanos = 0;
         pinnedLogged = false;
+        lastCheckedDesiredMs = -1;
         firstFrameTimecode = -1;
         position.reset(0);
         target = null;
@@ -637,8 +649,15 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         if (target == null || live || nowNanos - lastDriftNanos < DRIFT_INTERVAL_NANOS) {
             return;
         }
+        long elapsedMs = lastDriftNanos == 0 ? 0 : (nowNanos - lastDriftNanos) / 1_000_000L;
         lastDriftNanos = nowNanos;
         long desired = target.getAsLong();
+        if (lastCheckedDesiredMs >= 0 && desired >= 0
+                && Math.abs(desired - lastCheckedDesiredMs - elapsedMs) >= 500) {
+            RadioMod.LOGGER.warn("[{}] 鳴らすべき位置が大きく動きました: {}ms → {}ms（経過 {}ms、差 {}ms）。基準時刻（SYNC など）か時計合わせが変わった可能性",
+                    describe(), lastCheckedDesiredMs, desired, elapsedMs, desired - lastCheckedDesiredMs - elapsedMs);
+        }
+        lastCheckedDesiredMs = desired;
         if (desired < 0) {
             speed.setTarget(0);
             return;
@@ -806,6 +825,9 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 if (start > 0 && (live || !loaded.isSeekable())) {
                     start = 0; // 位置を合わせ直せない音源は、取得した時点から鳴らす
                 }
+                RadioMod.LOGGER.info("[{}] 開始位置の決定: target={} 鳴らすべき位置={}ms initialStart={}ms pausePositionMs={} → 開始位置={}ms",
+                        describe(), target != null ? "あり" : "なし", target != null ? target.getAsLong() : -1,
+                        target != null ? StartGate.initialStart(target.getAsLong()) : 0, pausePositionMs, start);
                 long loadedPosition = loaded.getPosition();
                 RadioMod.LOGGER.info("[{}] 取得したトラック: id={} uri={} hash={} 長さ={}ms 位置={}ms seek可={} 開始位置={}ms pausePositionMs={} 位置合わせ={}",
                         describe(), loaded.getInfo().identifier, loaded.getInfo().uri, System.identityHashCode(loaded),
