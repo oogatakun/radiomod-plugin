@@ -4,6 +4,7 @@ import com.oogata.radiomod.client.PlayerBarModel.Action;
 import com.oogata.radiomod.net.Messages;
 import com.oogata.radiomod.sync.ClientSync;
 import com.oogata.radiomod.sync.SlotRouter.NowPlaying;
+import com.oogata.radiomod.net.RadioNet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -15,9 +16,6 @@ public final class PlayerBar {
     /** 右から: 閉じる、キューを見る、次へ、再生/一時停止、前へ。 */
     private static final int BUTTONS = 5;
     private static final int HOVER = 0x60FFFFFF;
-    /** 長いタイトルを流す速さ(px/秒)と、一周したときの空白(px)。 */
-    private static final double SCROLL_SPEED = 28;
-    private static final int SCROLL_GAP = 28;
 
     private static final PlayerBarModel MODEL = new PlayerBarModel();
     private static NowPlaying current;
@@ -57,12 +55,11 @@ public final class PlayerBar {
         Font font = Minecraft.getInstance().font;
         g.fill(l.x(), l.y(), l.x() + l.width(), l.y() + l.height(), 0xD0181818);
 
-        boolean canControl = PlayerBarModel.command(n.slot(), Action.TOGGLE) != null;
         // 左から: 前へ、再生/一時停止、次へ、キュー、閉じる
         String[] labels = {"|<", n.paused() ? ">" : "||", ">|", "^", "x"};
         for (int i = 0; i < BUTTONS; i++) {
             int bx = buttonX(l, BUTTONS - 1 - i);
-            boolean enabled = canControl;
+            boolean enabled = true;
             boolean hover = mouseX >= bx && mouseX < bx + BUTTON_W && mouseY >= l.y() && mouseY < l.y() + l.height() - 3;
             if (hover && enabled) {
                 g.fill(bx, l.y() + 2, bx + BUTTON_W, l.y() + l.height() - 5, HOVER);
@@ -87,23 +84,8 @@ public final class PlayerBar {
         }
     }
 
-    /** 入りきるタイトルはそのまま。入りきらないときは、右から左へ流す(一周したら、空白をあけて頭から)。 */
     private static void drawMarquee(GuiGraphics g, Font font, String text, int left, int right, int y) {
-        int width = font.width(text);
-        int available = right - left;
-        if (width <= available) {
-            g.drawString(font, text, left, y, 0xFFFFFFFF, false);
-            return;
-        }
-        double seconds = (System.nanoTime() - shownSinceNanos) / 1e9;
-        int period = width + SCROLL_GAP;
-        // 最初の 1.5 秒は止めて読ませる
-        double moving = Math.max(0, seconds - 1.5);
-        int offset = (int) (moving * SCROLL_SPEED) % period;
-        g.enableScissor(left, y - 1, right, y + 10);
-        g.drawString(font, text, left - offset, y, 0xFFFFFFFF, false);
-        g.drawString(font, text, left - offset + period, y, 0xFFFFFFFF, false);
-        g.disableScissor();
+        Marquee.draw(g, font, text, left, right, y, 0xFFFFFFFF, shownSinceNanos);
     }
 
     /** クリックされたら、対応する操作をする。バーの上でクリックされたら true。 */
@@ -118,9 +100,13 @@ public final class PlayerBar {
             int bx = buttonX(l, i);
             if (mouseX >= bx && mouseX < bx + BUTTON_W) {
                 if (actions[i] == Action.CLOSE) {
-                    MODEL.dismiss(n.trackId()); // バーを隠す。曲を止められるもの(個人・共有)は、止めるコマンドも送る
+                    MODEL.dismiss(n.trackId()); // バーを隠して、曲も止める(止められるかはサーバーが権限で決める)
                 }
-                send(n, actions[i]);
+                if (actions[i] == Action.LIST) {
+                    PlayerScreen.open(n.slot());
+                } else {
+                    send(n, actions[i]);
+                }
                 break;
             }
         }
@@ -128,10 +114,9 @@ public final class PlayerBar {
     }
 
     private static void send(NowPlaying n, Action action) {
-        String command = PlayerBarModel.command(n.slot(), action);
-        var player = Minecraft.getInstance().player;
-        if (command != null && player != null) {
-            player.connection.sendCommand(command);
+        Byte control = PlayerBarModel.controlAction(action);
+        if (control != null) {
+            RadioNet.send(new Messages.Control(n.slot(), control, 0));
         }
     }
 }

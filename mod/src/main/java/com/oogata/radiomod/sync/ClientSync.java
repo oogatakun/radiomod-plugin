@@ -4,6 +4,8 @@ import com.oogata.radiomod.RadioMod;
 import com.oogata.radiomod.audio.AudioEngine;
 import com.oogata.radiomod.audio.AudioFailure;
 import com.oogata.radiomod.audio.PlaybackListener;
+import com.oogata.radiomod.client.PlayerScreen;
+import com.oogata.radiomod.client.QueueStore;
 import com.oogata.radiomod.net.Codec;
 import com.oogata.radiomod.net.Messages;
 import com.oogata.radiomod.net.RadioNet;
@@ -101,6 +103,15 @@ public final class ClientSync {
             CLOCK.onResponse(t.clientNanos(), t1Nanos, t.serverNowMs());
             return;
         }
+        if (message instanceof Messages.Queue q) {
+            QueueStore.put(q);
+            return;
+        }
+        if (message instanceof Messages.Open o) {
+            RadioMod.LOGGER.info("プレーヤー画面を開く指示: {}", o.slot());
+            Minecraft.getInstance().execute(() -> PlayerScreen.open(o.slot()));
+            return;
+        }
         ROUTER.handle(message);
     }
 
@@ -122,6 +133,7 @@ public final class ClientSync {
         }
         CLOCK.reset();
         ROUTER.stopAll();
+        QueueStore.clear();
     }
 
     private static void requestTime(int gen) {

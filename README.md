@@ -47,10 +47,18 @@ Windows では、リポジトリ直下の `build.bat` を使う(Java 17 が必�
 | `/ps list [score]` | キューを表示する(score はスコアボード) |
 | `/ps all [サブコマンド]` | 再生を共有する / 共有を操作する |
 | `/ps listen` `/ps leave` | 共有を聞く / やめる |
+| `/ps popup` `/ps all popup` | プレーヤー画面(キュー一覧・操作ボタン)を開く。個人 / 共有 |
 | `/rd wand` `create` `delete` `move` `tp` `radiolist` | ラジオの設置と管理 |
 | `/rp <ラジオ名> <play|playlist|add|pause|stop|list|skip|previous|keep>` | ラジオごとの再生。`keep` で再起動後も残す |
+| `/rp <ラジオ名> list popup` `/rp popup` | ラジオのプレーヤー画面を開く / ラジオを選ぶボタンを出す |
 
 対応する URL: mp3・aac・ogg・wav などの直リンク、インターネットラジオ(Icecast・Shoutcast、ライブ扱い)、YouTube、SoundCloud、Bandcamp。
+
+## プレーヤーのバーと画面(mod)
+
+- 音楽が鳴ると、画面の右下に小さなバーが出る(曲名・時間・進行バー)。止まると消える。
+- 操作設定の「ラジオ mod」の欄にある、カーソルを出すキー(既定: 左 Alt)を押している間だけ、バーをクリックできる。ボタンは `|<` `||`(`>`) `>|` `^` `x`。`^` でプレーヤー画面(キュー一覧)が開き、曲をクリックするとその曲から再生する。`x` はバーを隠して曲も止める。
+- プレーヤー画面は `/ps popup`・`/ps all popup`・`/rp <ラジオ名> list popup` でも開く。
 
 ## 権限
 

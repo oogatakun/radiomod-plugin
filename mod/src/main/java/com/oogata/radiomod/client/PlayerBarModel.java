@@ -41,21 +41,16 @@ public final class PlayerBarModel {
     }
 
     /**
-     * ボタンが実行するコマンド(先頭の / なし)。ラジオは、mod がラジオの名前を知らないため、まだ操作できない(null)。
-     * CLOSE は曲を止める。個人は止めてキューを空にする。共有は、全員の共有を終わらせないよう、自分が聞くのをやめるだけにする。
+     * ボタンに対応する CONTROL の action。LIST(プレーヤー画面を開く)は、サーバーへの操作ではないので null。
+     * 権限や、共有を聞いているかどうかは、サーバーが確かめる。CLOSE の STOP は、共有では自分が聞くのをやめるだけ。
      */
-    public static String command(Messages.Slot slot, Action action) {
-        boolean shared = slot.slotType() == Messages.Slot.SHARED;
-        if (slot.slotType() == Messages.Slot.RADIO) {
-            return null;
-        }
-        String base = shared ? "ps all " : "ps ";
+    public static Byte controlAction(Action action) {
         return switch (action) {
-            case PREVIOUS -> base + "previous";
-            case TOGGLE -> base + "pause";
-            case NEXT -> base + "skip";
-            case LIST -> base + "list";
-            case CLOSE -> shared ? "ps leave" : "ps stop";
+            case PREVIOUS -> Messages.Control.PREVIOUS;
+            case TOGGLE -> Messages.Control.PAUSE;
+            case NEXT -> Messages.Control.SKIP;
+            case CLOSE -> Messages.Control.STOP;
+            case LIST -> null;
         };
     }
 
