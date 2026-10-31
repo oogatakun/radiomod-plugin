@@ -1,5 +1,7 @@
 package com.oogata.radiomod.sync;
 
+import java.util.function.DoubleSupplier;
+
 /**
  * ずれ（鳴らすべき位置 - 鳴っている位置）から、再生速度の目標のずれを決める。
  * 差が startMs 以上になったら補正を始め、stopMs 未満になったらやめる。速度は最大 ±maxDeviation。
@@ -15,16 +17,21 @@ public final class DriftCorrector {
     /** ずれがこの値（ミリ秒）のとき、目標が 1.0（=100%）になる比例の係数。 */
     private static final double GAIN_MS = 2000;
 
-    private final double startMs;
-    private final double stopMs;
-    private final double maxDeviation;
+    private final DoubleSupplier startMs;
+    private final DoubleSupplier stopMs;
+    private final DoubleSupplier maxDeviation;
     private boolean correcting;
 
+    /** 値は {@link SyncSettings}（クライアント設定）を、更新のたびに読む。 */
     public DriftCorrector() {
-        this(START_MS, STOP_MS, MAX_DEVIATION);
+        this(SyncSettings::startMs, SyncSettings::stopMs, SyncSettings::maxDeviation);
     }
 
     public DriftCorrector(double startMs, double stopMs, double maxDeviation) {
+        this(() -> startMs, () -> stopMs, () -> maxDeviation);
+    }
+
+    public DriftCorrector(DoubleSupplier startMs, DoubleSupplier stopMs, DoubleSupplier maxDeviation) {
         this.startMs = startMs;
         this.stopMs = stopMs;
         this.maxDeviation = maxDeviation;
@@ -33,15 +40,16 @@ public final class DriftCorrector {
     /** diffMs = 鳴らすべき位置 - 鳴っている位置。戻り値は速度の目標のずれ（0.01 = 1% 速く）。 */
     public double update(double diffMs) {
         double abs = Math.abs(diffMs);
-        if (!correcting && abs >= startMs) {
+        if (!correcting && abs >= startMs.getAsDouble()) {
             correcting = true;
-        } else if (correcting && abs < stopMs) {
+        } else if (correcting && abs < stopMs.getAsDouble()) {
             correcting = false;
         }
         if (!correcting) {
             return 0;
         }
-        return Math.max(-maxDeviation, Math.min(maxDeviation, diffMs / GAIN_MS));
+        double max = maxDeviation.getAsDouble();
+        return Math.max(-max, Math.min(max, diffMs / GAIN_MS));
     }
 
     public boolean isCorrecting() {

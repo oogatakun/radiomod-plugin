@@ -21,6 +21,7 @@ public final class RadioMod {
                 () -> new IExtensionPoint.DisplayTest(() -> NetworkConstants.IGNORESERVERONLY, (remote, server) -> true));
         if (net.minecraftforge.fml.loading.FMLEnvironment.dist == Dist.CLIENT) {
             RadioNet.init();
+            com.oogata.radiomod.client.ClientSetup.init();
             net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(
                     (net.minecraftforge.client.event.RegisterClientCommandsEvent e) ->
                             com.oogata.radiomod.debug.DebugCommand.register(e.getDispatcher()));

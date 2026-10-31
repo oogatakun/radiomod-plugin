@@ -25,7 +25,7 @@ public final class ClientSync {
     private static final long REGULAR_INTERVAL_MS = 30_000;
 
     private static final ServerClock CLOCK = new ServerClock();
-    /** プレイヤーが設定する、出力機器の遅れの補正値（ms）。設定画面はステップ5で作る。 */
+    /** プレイヤーが設定する、出力機器の遅れの補正値（ms）。クライアント設定から書き込まれる。 */
     private static volatile long manualOffsetMs = 0;
     private static final SlotRouter ROUTER =
             new SlotRouter(slot -> AudioEngine.get().slot(slot), CLOCK, () -> manualOffsetMs);
@@ -43,6 +43,10 @@ public final class ClientSync {
 
     public static long manualOffsetMs() {
         return manualOffsetMs;
+    }
+
+    public static void setManualOffsetMs(long ms) {
+        manualOffsetMs = ms;
     }
 
     public static ServerClock clock() {
