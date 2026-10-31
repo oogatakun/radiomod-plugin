@@ -100,4 +100,38 @@ class QueueViewTest {
         assertEquals(PlaybackEngine.Result.LIVE, engine.jump(1));
         assertEquals(0, engine.index());
     }
+
+    @Test
+    void SEEKは新しい基準時刻で同じ曲を送り直し_ライブには効かない() {
+        engine.playSingle(song("a", 600_000), false);
+        clock.advance(10_000);
+        QueueView.apply(engine, control(Messages.Control.SEEK, 120_000));
+        // 動かし先から鳴るよう、基準時刻 = いま + lead - 動かし先
+        assertEquals(clock.nowMs() + 500 - 120_000, engine.originMs());
+        assertEquals(120_000 - 500, engine.positionMs());
+        assertEquals(List.of("play:a", "play:a"), out.events);
+        // 曲の長さを超える位置は、終わりの1秒前まで
+        QueueView.apply(engine, control(Messages.Control.SEEK, 9_999_999));
+        assertEquals(599_000 - 500, engine.positionMs());
+        engine.playSingle(live("radio"), false);
+        assertEquals(PlaybackEngine.Result.LIVE, engine.seek(5_000));
+    }
+
+    @Test
+    void 一時停止中のSEEKは_動かし先で止めたままにする() {
+        engine.playSingle(song("a", 600_000), false);
+        clock.advance(10_000);
+        engine.pause();
+        out.events.clear();
+        engine.seek(200_000);
+        assertEquals(State.PAUSED, engine.state());
+        assertEquals(200_000, engine.positionMs());
+        assertEquals(List.of("play:a", "pause:200000"), out.events);
+    }
+
+    @Test
+    void 停止中のSEEKは何もしない() {
+        assertEquals(PlaybackEngine.Result.NOT_PLAYING, engine.seek(1000));
+        assertEquals(List.of(), out.events);
+    }
 }

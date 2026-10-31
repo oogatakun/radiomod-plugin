@@ -171,7 +171,7 @@ public sealed interface Messages {
         }
     }
 
-    /** プレーヤー画面の操作。arg は JUMP のときの曲の番号(0 始まり)で、それ以外は 0。 */
+    /** プレーヤー画面の操作。arg は、JUMP のときは曲の番号(0 始まり)、SEEK のときは位置(ms)で、それ以外は 0。 */
     record Control(Slot slot, byte action, int arg) implements Messages {
         public static final int TYPE = 0x83;
         /** 一時停止と再開の切り替え。 */
@@ -185,6 +185,8 @@ public sealed interface Messages {
         public static final byte LOOP = 5;
         /** キューの状態(QUEUE)を返してもらう。画面を開いている間、約1秒ごとに送る。 */
         public static final byte REFRESH = 6;
+        /** 再生位置を動かす。arg は動かし先の位置(曲の頭からのミリ秒)。 */
+        public static final byte SEEK = 7;
 
         @Override
         public int type() {

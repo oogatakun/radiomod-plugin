@@ -13,6 +13,9 @@ import net.minecraft.client.gui.GuiGraphics;
 public final class PlayerBar {
 
     private static final int BUTTON_W = 18;
+    /** 2段目(時間とボタン)の、バーの上端からの位置と高さ。 */
+    private static final int ROW2_TOP = 16;
+    private static final int ROW2_H = 18;
     /** 右から: 閉じる、キューを見る、次へ、再生/一時停止、前へ。 */
     private static final int BUTTONS = 5;
     private static final int HOVER = 0x60FFFFFF;
@@ -55,26 +58,25 @@ public final class PlayerBar {
         Font font = Minecraft.getInstance().font;
         g.fill(l.x(), l.y(), l.x() + l.width(), l.y() + l.height(), 0xD0181818);
 
-        // 左から: 前へ、再生/一時停止、次へ、キュー、閉じる
+        // 1段目: タイトル(長ければ流す)。2段目: 時間と、ボタン
+        String title = (n.slot().slotType() == Messages.Slot.RADIO ? "[ラジオ] " : "") + n.title();
+        drawMarquee(g, font, title, l.x() + 8, l.x() + l.width() - 8, l.y() + 5);
+
+        // ボタンは左から: 前へ、再生/一時停止、次へ、キュー、閉じる
         String[] labels = {"|<", n.paused() ? ">" : "||", ">|", "^", "x"};
+        int rowTop = l.y() + ROW2_TOP;
         for (int i = 0; i < BUTTONS; i++) {
             int bx = buttonX(l, BUTTONS - 1 - i);
-            boolean enabled = true;
-            boolean hover = mouseX >= bx && mouseX < bx + BUTTON_W && mouseY >= l.y() && mouseY < l.y() + l.height() - 3;
-            if (hover && enabled) {
-                g.fill(bx, l.y() + 2, bx + BUTTON_W, l.y() + l.height() - 5, HOVER);
+            boolean hover = mouseX >= bx && mouseX < bx + BUTTON_W && mouseY >= rowTop && mouseY < rowTop + ROW2_H;
+            if (hover) {
+                g.fill(bx, rowTop, bx + BUTTON_W, rowTop + ROW2_H, HOVER);
             }
-            g.drawCenteredString(font, labels[i], bx + BUTTON_W / 2, l.y() + 7, enabled ? 0xFFFFFFFF : 0xFF707070);
+            g.drawCenteredString(font, labels[i], bx + BUTTON_W / 2, rowTop + 5, 0xFFFFFFFF);
         }
-
-        int textLeft = l.x() + 8;
-        int textRight = buttonX(l, BUTTONS - 1) - 4;
-        String title = (n.slot().slotType() == Messages.Slot.RADIO ? "[ラジオ] " : "") + n.title();
-        drawMarquee(g, font, title, textLeft, textRight, l.y() + 4);
         String time = n.durationMs() > 0 && n.positionMs() >= 0
                 ? PlayerBarModel.time(n.positionMs()) + " / " + PlayerBarModel.time(n.durationMs())
                 : n.durationMs() < 0 ? "LIVE" : "";
-        g.drawString(font, time, textLeft, l.y() + 14, 0xFFA0A0A0, false);
+        g.drawString(font, time, l.x() + 8, rowTop + 5, 0xFFA0A0A0, false);
 
         // 進行バー
         g.fill(l.x(), l.y() + l.height() - 2, l.x() + l.width(), l.y() + l.height(), 0xFF404040);
@@ -94,6 +96,9 @@ public final class PlayerBar {
         PlayerBarLayout l = PlayerBarLayout.of(screenWidth, screenHeight);
         if (n == null || !l.contains(mouseX, mouseY)) {
             return false;
+        }
+        if (mouseY < l.y() + ROW2_TOP || mouseY >= l.y() + ROW2_TOP + ROW2_H) {
+            return true; // タイトルの段や進行バーのクリックは、何もしない(バーの上なので、ゲームには渡さない)
         }
         Action[] actions = {Action.CLOSE, Action.LIST, Action.NEXT, Action.TOGGLE, Action.PREVIOUS}; // 右から
         for (int i = 0; i < BUTTONS; i++) {

@@ -269,6 +269,37 @@ public final class PlaybackEngine {
         return Result.OK;
     }
 
+    /**
+     * 今の曲の再生位置を動かす(プレーヤー画面の進行バー)。ライブや停止中は何もしない。
+     * SYNC では位置を飛ばせない(補正は速度の微調整だけ)ので、同じ曲の PLAY を、動かし先から鳴るように作った
+     * 新しい基準時刻で送り直す。一時停止中なら、その位置で止めたままにする。
+     */
+    public Result seek(long positionMs) {
+        Track track = currentTrack();
+        if (track == null || state == State.STOPPED) {
+            return Result.NOT_PLAYING;
+        }
+        if (track.live()) {
+            return Result.LIVE;
+        }
+        long to = Math.max(0, positionMs);
+        if (track.durationMs() > 0) {
+            to = Math.min(to, Math.max(0, track.durationMs() - 1000)); // 曲の終わりぎわで、すぐ次へ進まないようにする
+        }
+        long now = clock.nowMs();
+        trackId = trackIds.getAsLong();
+        originMs = now + settings.startLeadMs() - to;
+        lastSyncMs = now;
+        consecutiveErrors = 0;
+        output.play(track, trackId, originMs);
+        if (state == State.PAUSED) {
+            pausedPositionMs = to;
+            output.pause(to);
+        }
+        trace("seek(" + to + ")");
+        return Result.OK;
+    }
+
     /** loop を なし → 単曲 → 全体 → なし の順に切り替える。今の曲がライブなら、単曲は飛ばす。切り替えたあとの値を返す。 */
     public Loop cycleLoop() {
         Loop next = switch (loop) {

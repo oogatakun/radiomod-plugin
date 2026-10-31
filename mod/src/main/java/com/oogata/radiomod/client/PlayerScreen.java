@@ -37,6 +37,12 @@ public final class PlayerScreen extends Screen {
     private final Messages.Slot slot;
     private int ticks;
     private int scroll;
+    /** 進行バーをドラッグしているか。離したときに、その位置へ動かす。 */
+    private boolean dragging;
+    private double dragFraction;
+    /** 動かしたあと、サーバーの返事で位置が変わるまで、動かし先を出しておく。 */
+    private long previewMs = -1;
+    private long previewUntilNanos;
     private String shownTitle = "";
     private long titleSinceNanos = System.nanoTime();
 
@@ -111,6 +117,26 @@ public final class PlayerScreen extends Screen {
         return new int[] {x, top() + HEADER_H + 40, w, 18};
     }
 
+    /** 進行バーの、クリック・ドラッグできる範囲。{x, y, w, h}。 */
+    private int[] seekArea() {
+        return new int[] {left() + PAD, top() + HEADER_H + 24 + 4, PANEL_W - PAD * 2, 14};
+    }
+
+    private NowPlaying nowPlaying() {
+        return ClientSync.router().nowPlaying().stream().filter(n -> n.slot().equals(slot)).findFirst().orElse(null);
+    }
+
+    /** 動かせる曲(長さが分かる、ライブでない)の長さ。なければ 0。 */
+    private long seekableDurationMs() {
+        NowPlaying n = nowPlaying();
+        return n != null && n.durationMs() > 0 ? n.durationMs() : 0;
+    }
+
+    private void updateDrag(double mouseX) {
+        int[] r = seekArea();
+        dragFraction = Math.max(0, Math.min(1, (mouseX - r[0]) / r[2]));
+    }
+
     private int[] closeButton() {
         return new int[] {left() + PANEL_W - 22, top() + 2, 18, 18};
     }
@@ -127,8 +153,7 @@ public final class PlayerScreen extends Screen {
         int l = left();
         int t = top();
         Messages.Queue q = QueueStore.get(slot);
-        NowPlaying np = ClientSync.router().nowPlaying().stream().filter(n -> n.slot().equals(slot)).findFirst()
-                .orElse(null);
+        NowPlaying np = nowPlaying();
 
         g.fill(l, t, l + PANEL_W, t + PANEL_H, BG);
         g.fill(l, t, l + PANEL_W, t + HEADER_H, HEADER_BG);
@@ -210,19 +235,31 @@ public final class PlayerScreen extends Screen {
     }
 
     private void drawProgress(GuiGraphics g, Font font, NowPlaying np, int x, int y, int w) {
-        g.fill(x, y + 10, x + w, y + 12, 0xFF404040);
+        g.fill(x, y + 10, x + w, y + 13, 0xFF404040);
         if (np == null) {
             return;
         }
+        long duration = np.durationMs();
         double p = PlayerBarModel.progress(np);
-        if (p >= 0) {
-            g.fill(x, y + 10, x + (int) (w * p), y + 12, ACCENT);
+        long shownMs = np.positionMs();
+        if (duration > 0 && dragging) {
+            p = dragFraction;
+            shownMs = (long) (dragFraction * duration);
+        } else if (duration > 0 && previewMs >= 0 && System.nanoTime() < previewUntilNanos) {
+            p = Math.min(1, (double) previewMs / duration);
+            shownMs = previewMs;
         }
-        String time = np.durationMs() > 0 && np.positionMs() >= 0 ? PlayerBarModel.time(np.positionMs())
-                : np.durationMs() < 0 ? "LIVE" : "";
-        g.drawString(font, time, x, y, SUB_TEXT, false);
-        if (np.durationMs() > 0) {
-            String total = PlayerBarModel.time(np.durationMs());
+        if (p >= 0) {
+            int end = x + (int) (w * p);
+            g.fill(x, y + 10, end, y + 13, ACCENT);
+            if (duration > 0) {
+                g.fill(end - 2, y + 8, end + 2, y + 15, TEXT); // つまみ
+            }
+        }
+        String time = duration > 0 && shownMs >= 0 ? PlayerBarModel.time(shownMs) : duration < 0 ? "LIVE" : "";
+        g.drawString(font, time, x, y, dragging ? TEXT : SUB_TEXT, false);
+        if (duration > 0) {
+            String total = PlayerBarModel.time(duration);
             g.drawString(font, total, x + w - font.width(total), y, SUB_TEXT, false);
         }
     }
@@ -236,6 +273,11 @@ public final class PlayerScreen extends Screen {
         }
         if (inside(closeButton(), mx, my)) {
             onClose();
+            return true;
+        }
+        if (inside(seekArea(), mx, my) && seekableDurationMs() > 0) {
+            dragging = true;
+            updateDrag(mx);
             return true;
         }
         byte[] actions = {Messages.Control.PREVIOUS, Messages.Control.PAUSE, Messages.Control.SKIP,
@@ -255,6 +297,31 @@ public final class PlayerScreen extends Screen {
             return true;
         }
         return super.mouseClicked(mx, my, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (dragging && button == 0) {
+            updateDrag(mx);
+            return true;
+        }
+        return super.mouseDragged(mx, my, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double mx, double my, int button) {
+        if (dragging && button == 0) {
+            dragging = false;
+            updateDrag(mx);
+            long duration = seekableDurationMs();
+            if (duration > 0) {
+                previewMs = (long) (dragFraction * duration);
+                previewUntilNanos = System.nanoTime() + 1_500_000_000L; // サーバーが PLAY を送り直すまでの間
+                control(Messages.Control.SEEK, (int) Math.min(Integer.MAX_VALUE, previewMs));
+            }
+            return true;
+        }
+        return super.mouseReleased(mx, my, button);
     }
 
     @Override

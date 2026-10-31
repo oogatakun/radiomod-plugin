@@ -42,6 +42,7 @@ public final class QueueView {
             case Messages.Control.STOP -> e.stop();
             case Messages.Control.JUMP -> e.jump(control.arg());
             case Messages.Control.LOOP -> e.cycleLoop();
+            case Messages.Control.SEEK -> e.seek(control.arg());
             default -> {
             }
         }
