@@ -89,11 +89,8 @@ public final class RadioAppearance {
         if (displays.isEmpty()) {
             return new BuildResult(0, 0, used);
         }
-        BuildResult result = finish(displays, r, root, base, used);
-        if (result.parts() > 0) {
-            spawnName(r, pos, result.height(), nowPlaying);
-        }
-        return result;
+        // 名前表示（spawnName）は、見た目の邪魔になるので出さない
+        return finish(displays, r, root, base, used);
     }
 
     private ModelFile loadModel(String name) {
@@ -211,7 +208,8 @@ public final class RadioAppearance {
             maxY = Math.max(maxY, topOf(matrixOf(d)));
         }
         for (Display d : parts) {
-            Matrix4f rotated = Orientation.rotateAboutCenter(matrixOf(d), r.rotation(), 0.5f, 0.5f);
+            // luxuryboombox の前面は -Z 側にある（実機で確認）ので、向き q に 180 度足す
+            Matrix4f rotated = Orientation.rotateAboutCenter(matrixOf(d), r.rotation() + 2, 0.5f, 0.5f);
             d.setTransformationMatrix(rotated);
             d.setViewRange(viewRange);
             for (String t : new ArrayList<>(d.getScoreboardTags())) {

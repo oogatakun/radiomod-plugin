@@ -525,6 +525,10 @@ public final class PlayerSoundService {
             host.hideScore(actor);
             return;
         }
+        if (e.queue().isEmpty()) {
+            host.tell(actor, "キューが空です");
+            return;
+        }
         scoreShown.add(actor);
         host.showScore(actor, "キュー", QueueFormatter.scoreLines(e.queue(), e.index(),
                 e.state() != PlaybackEngine.State.STOPPED));
