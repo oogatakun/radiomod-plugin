@@ -49,10 +49,11 @@ configurations {
         exclude group: 'commons-codec'
         exclude group: 'commons-logging'
         exclude group: 'org.jetbrains', module: 'annotations'
-        // Rhino(YouTube の署名の解読用)は同梱しない。WorldEdit など、Rhino のクラスを自分の jar に持つ mod と
+        // Rhino 本体(org.mozilla:rhino)は同梱しない。WorldEdit など、Rhino 本体のクラスを自分の jar に持つ mod と
         // 同じパッケージが重なり、起動時に「Modules org.mozilla.rhino and worldedit export package ...」で落ちるため。
-        // IOS・ANDROID の取得には要らない。WEB・MWEB の署名の解読は、Rhino を持つ mod が入っているときだけ使える。
-        exclude group: 'org.mozilla'
+        // YouTube が使う rhino-engine(org.mozilla.javascript.engine)は WorldEdit にないので、これは同梱する。
+        // 本体は WorldEdit などのものを使う。Rhino 本体を持つ mod が入っていないと、YouTube は使えない(mp3・ラジオは使える)。
+        exclude group: 'org.mozilla', module: 'rhino'
     }
 }
 
