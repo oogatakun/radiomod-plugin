@@ -19,12 +19,17 @@ import java.util.function.Consumer;
 public final class RadioPlayerService {
 
     public static final List<String> SUB_COMMANDS =
-            List.of("play", "playlist", "add", "pause", "stop", "list", "skip", "previous", "keep");
+            List.of("play", "playlist", "add", "pause", "stop", "list", "skip", "previous", "keep", "popup");
 
     /** ラジオ側（設置位置・名前表示・保存）との境界。 */
     public interface Radios {
         /** 送信用の位置情報。そのラジオがなければ null。 */
         Messages.RadioTarget target(UUID radioId);
+
+        /** ラジオの名前。そのラジオがなければ空。 */
+        default String name(UUID radioId) {
+            return "";
+        }
 
         /** 名前表示に出す曲名。null なら消す。 */
         void setNowPlaying(UUID radioId, String title);
@@ -113,9 +118,51 @@ public final class RadioPlayerService {
             }
             case "skip" -> afterMove(say, radioId, engine(radioId).skip());
             case "previous" -> afterMove(say, radioId, engine(radioId).previous());
-            case "list" -> list(actor, radioId, args, say);
+            case "list" -> list(actor, radioId, radioName, args, say);
+            case "popup" -> popup(actor, radioId, radioName);
             default -> say.accept("使い方: " + prefix + "<play|playlist|add|pause|stop|list|skip|previous|keep>");
         }
+    }
+
+    /** プレーヤー画面を開く。 */
+    public void popup(UUID actor, UUID radioId, String radioName) {
+        if (!host.hasMod(actor)) {
+            host.tell(actor, "プレーヤー画面を出すには、mod が必要です。");
+            return;
+        }
+        Messages.Slot slot = Messages.Slot.radio(radioId);
+        host.send(actor, new Messages.Open(slot));
+        host.send(actor, QueueView.of(slot, radioName, engine(radioId)));
+    }
+
+    /** /rp popup(ラジオ名なし): ラジオを選ぶボタンをチャットに出す。 */
+    public void chooseRadio(UUID actor, java.util.Collection<String> names) {
+        if (names.isEmpty()) {
+            host.tell(actor, "ラジオがありません。/rd create で作ってください。");
+            return;
+        }
+        List<PlayerHost.Button> buttons = new ArrayList<>();
+        for (String name : names) {
+            buttons.add(new PlayerHost.Button("［" + name + "］", "/rp " + name + " list popup"));
+        }
+        host.tellButtons(actor, "プレーヤー画面を開くラジオを選んでください:", buttons);
+    }
+
+    /** プレーヤー画面からの操作(CONTROL)。ラジオのスロットだけ扱う。 */
+    public void control(UUID actor, Messages.Control control) {
+        if (control.slot().slotType() != Messages.Slot.RADIO) {
+            return;
+        }
+        UUID radioId = control.slot().radioId();
+        if (radios.target(radioId) == null) {
+            return; // 撤去されたラジオ
+        }
+        PlaybackEngine e = engine(radioId);
+        if (control.action() != Messages.Control.REFRESH) {
+            QueueView.apply(e, control);
+            radios.changed(radioId, e.snapshot());
+        }
+        host.send(actor, QueueView.of(control.slot(), radios.name(radioId), e));
     }
 
     /** そのラジオの今の状態。まだ何も再生していなければ null。 */
@@ -201,9 +248,13 @@ public final class RadioPlayerService {
         }
     }
 
-    private void list(UUID actor, UUID radioId, List<String> args, Consumer<String> say) {
+    private void list(UUID actor, UUID radioId, String radioName, List<String> args, Consumer<String> say) {
+        if (args.size() == 1 && args.get(0).equalsIgnoreCase("popup")) {
+            popup(actor, radioId, radioName);
+            return;
+        }
         if (args.size() > 1 || (args.size() == 1 && !args.get(0).equalsIgnoreCase("score"))) {
-            say.accept("使い方: /rp <ラジオ名> list [score]");
+            say.accept("使い方: /rp <ラジオ名> list [score|popup]");
             return;
         }
         PlaybackEngine e = engine(radioId);

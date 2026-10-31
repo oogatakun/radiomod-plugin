@@ -22,7 +22,7 @@ import java.util.function.Supplier;
 public final class PlayerSoundService {
 
     public static final List<String> SUB_COMMANDS =
-            List.of("play", "playlist", "add", "pause", "stop", "list", "skip", "previous");
+            List.of("play", "playlist", "add", "pause", "stop", "list", "skip", "previous", "popup");
 
     /** 共有を聞いている間に打つと確認が出る操作（list は表示だけなので含まない）。 */
     private static final Set<String> CONFIRM_REQUIRED =
@@ -110,6 +110,7 @@ public final class PlayerSoundService {
             case "leave" -> leave(actor);
             case "confirm" -> confirm(actor);
             case "cancel" -> cancel(actor);
+            case "popup" -> popup(actor, false);
             default -> {
                 if (!SUB_COMMANDS.contains(sub)) {
                     host.tell(actor, "使い方: /ps <play|playlist|add|pause|stop|list|skip|previous|all|listen|leave>");
@@ -125,6 +126,51 @@ public final class PlayerSoundService {
                 execute(new Ctx(actor, false, false), sub, args);
             }
         }
+    }
+
+    /** プレーヤー画面を開く。個人は自分の再生、all なら聞いている共有。 */
+    public void popup(UUID actor, boolean all) {
+        if (!host.hasMod(actor)) {
+            host.tell(actor, "プレーヤー画面を出すには、mod が必要です。");
+            return;
+        }
+        if (all && !isListening(actor)) {
+            host.tell(actor, "共有を聞いていません。/ps listen で聞いてから開いてください。");
+            return;
+        }
+        Messages.Slot slot = all ? Messages.Slot.SHARED_SLOT : Messages.Slot.PERSONAL_SLOT;
+        PlaybackEngine e = all ? shared.engine : personalOf(actor).engine;
+        host.send(actor, new Messages.Open(slot));
+        host.send(actor, QueueView.of(slot, "", e));
+    }
+
+    /** プレーヤー画面からの操作(CONTROL)。個人と共有のスロットだけ扱う(ラジオは RadioPlayerService)。 */
+    public void control(UUID actor, Messages.Control control) {
+        Messages.Slot slot = control.slot();
+        PlaybackEngine e;
+        if (slot.slotType() == Messages.Slot.SHARED) {
+            if (!isListening(actor)) {
+                return;
+            }
+            e = shared.engine;
+        } else if (slot.slotType() == Messages.Slot.PERSONAL) {
+            e = personalOf(actor).engine;
+        } else {
+            return;
+        }
+        if (control.action() != Messages.Control.REFRESH) {
+            if (slot.slotType() == Messages.Slot.PERSONAL && isListening(actor)) {
+                host.tell(actor, "共有を聞いている間は、個人の再生は操作できません。");
+            } else if (slot.slotType() == Messages.Slot.SHARED && control.action() == Messages.Control.STOP) {
+                leave(actor); // 共有そのものは、ほかの人のために続ける
+                host.send(actor, QueueView.of(slot, "", e));
+                return;
+            } else {
+                QueueView.apply(e, control);
+            }
+            refreshScores();
+        }
+        host.send(actor, QueueView.of(slot, "", e));
     }
 
     public boolean isListening(UUID player) {
@@ -209,8 +255,12 @@ public final class PlayerSoundService {
             shareFromPersonal(actor);
             return;
         }
+        if (sub.equals("popup")) {
+            popup(actor, true);
+            return;
+        }
         if (!SUB_COMMANDS.contains(sub)) {
-            host.tell(actor, "使い方: /ps all [play|playlist|add|pause|stop|list|skip|previous]");
+            host.tell(actor, "使い方: /ps all [play|playlist|add|pause|stop|list|skip|previous|popup]");
             return;
         }
         if (!validate(actor, sub, args)) {

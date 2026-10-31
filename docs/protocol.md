@@ -34,9 +34,13 @@
 | 0x05 | SYNC | スロット / originMs(long) |
 | 0x06 | MOVE | スロット（ラジオ） / dimension(文字列) / x,y,z(double×3) |
 | 0x07 | TIME | clientNanos(long) / serverNowMs(long) |
+| 0x08 | QUEUE | スロット / label(文字列。ラジオのときは名前、それ以外は空) / state(byte、0 = 停止、1 = 再生中、2 = 一時停止) / loop(byte、0 = なし、1 = 単曲、2 = 全体) / index(int、いま何曲目か。キューが空なら -1) / count(int、最大 200) / count 個の { title(文字列) / durationMs(long、ライブは -1) } |
+| 0x09 | OPEN | スロット |
 
 - `originMs` は、曲の頭（位置0ms）に当たるサーバー時刻。鳴らすべき位置は、「いまのサーバー時刻」から `originMs` を引いた値になる。
 - `positionMs` は、一時停止した位置（曲の頭からのミリ秒）。
+- `QUEUE` は、プレーヤー画面に出すキューの状態。`OPEN` の直後と、`CONTROL` の返事として、操作した1人にだけ送る。曲が200を超えるときは、先頭の200曲だけを送る。
+- `OPEN` は、そのスロットのプレーヤー画面を開く指示（`/ps popup`・`/ps all popup`・`/rp <名前> list popup`）。
 
 ## mod → サーバー
 
@@ -45,8 +49,12 @@
 | 0x80 | HELLO | protocolVersion(int) / modVersion(文字列) |
 | 0x81 | ERROR | スロット / trackId(long) / reason(byte) / detail(文字列) |
 | 0x82 | TIME_REQ | clientNanos(long) |
+| 0x83 | CONTROL | スロット / action(byte) / arg(int) |
 
 reason: 0 = 取得に失敗、1 = 非対応のURL、2 = デコードに失敗、3 = その他。
+
+CONTROL の action: 0 = PAUSE（一時停止と再開の切り替え）、1 = SKIP、2 = PREVIOUS、3 = STOP（止めてキューを空にする。共有は、自分が聞くのをやめるだけ）、4 = JUMP（arg の番号の曲を最初から再生。0 始まり）、5 = LOOP（なし → 単曲 → 全体 → なし の順に切り替え）、6 = REFRESH（`QUEUE` を返してもらう）。arg は JUMP のときだけ使い、それ以外は 0。
+サーバーは、スロットに応じて、`/ps`・`/ps all`・`/rp` と同じ権限を確かめてから実行する。権限がないときや、共有を聞いていないときは、何もしない。
 
 ## 時計合わせ
 
@@ -75,3 +83,4 @@ mod が「いまのサーバー時刻」を推定するための手順。
 11. 位置を合わせられない音源: ライブ（`durationMs` が -1）と、位置の合わせ直しができない音源は、`originMs` による位置合わせも、4の補正もしない。各自が取得した時点から鳴らす。
 12. 出力機器の遅れ: mod は、プレイヤーが設定した手動の補正値（ms）を、鳴らすべき位置に足す。Bluetooth ヘッドホンなど、出力の遅れが大きい機器のため。
 13. バージョン違い: `HELLO` の protocolVersion がサーバーと違うとき、サーバーはそのプレイヤーに何も送らず、ログに警告を出す。
+14. プレーヤー画面: mod は、画面を開いている間、約1秒ごとに `REFRESH` を送り、返ってきた `QUEUE` で画面を更新する。`QUEUE`・`REFRESH` は量が多いので、サーバーはログに出さない（debug-net のときだけ）。`OPEN` や `CONTROL` の `PAUSE` などの操作は、画面を持たない mod には何も起きない（未知の種別は無視する）。

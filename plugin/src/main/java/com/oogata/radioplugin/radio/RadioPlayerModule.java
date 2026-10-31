@@ -97,6 +97,19 @@ public final class RadioPlayerModule implements RadioPlayerService.Radios, NetSe
     }
 
     @Override
+    public String name(UUID radioId) {
+        Radio r = manager.find(radioId);
+        return r == null ? "" : r.name();
+    }
+
+    @Override
+    public void onControl(Player player, Messages.Control control) {
+        if (control.slot().slotType() == Messages.Slot.RADIO && player.hasPermission("radioplugin.rp")) {
+            service.control(player.getUniqueId(), control);
+        }
+    }
+
+    @Override
     public void setNowPlaying(UUID radioId, String title) {
         manager.setNowPlaying(radioId, title);
     }

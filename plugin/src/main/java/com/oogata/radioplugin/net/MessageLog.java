@@ -6,9 +6,11 @@ public final class MessageLog {
     private MessageLog() {
     }
 
-    /** TIME / TIME_REQ は量が多いので、debug-net のときだけ出す。 */
+    /** TIME / TIME_REQ と、プレーヤー画面の更新(QUEUE と REFRESH。約1秒ごと)は量が多いので、debug-net のときだけ出す。 */
     public static boolean isNoisy(Messages message) {
-        return message instanceof Messages.Time || message instanceof Messages.TimeReq;
+        return message instanceof Messages.Time || message instanceof Messages.TimeReq
+                || message instanceof Messages.Queue
+                || message instanceof Messages.Control c && c.action() == Messages.Control.REFRESH;
     }
 
     /**
@@ -43,6 +45,14 @@ public final class MessageLog {
                     .append(" reason=").append(m.reason()).append(" detail=").append(m.detail());
         } else if (message instanceof Messages.TimeReq m) {
             sb.append("TIME_REQ clientNanos=").append(m.clientNanos());
+        } else if (message instanceof Messages.Queue m) {
+            sb.append("QUEUE ").append(slot(m.slot())).append(" state=").append(m.state()).append(" index=")
+                    .append(m.index()).append(" 曲数=").append(m.entries().size());
+        } else if (message instanceof Messages.Open m) {
+            sb.append("OPEN ").append(slot(m.slot()));
+        } else if (message instanceof Messages.Control m) {
+            sb.append("CONTROL ").append(slot(m.slot())).append(" action=").append(m.action()).append(" arg=")
+                    .append(m.arg());
         }
         return sb.append(" now=").append(nowMs).toString();
     }

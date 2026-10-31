@@ -7,6 +7,8 @@ import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /** docs/protocol.md のバイト形式（big-endian）のエンコードとデコード。 */
@@ -79,6 +81,24 @@ public final class Codec {
                 writeString(out, m.detail(), MAX_TEXT_BYTES, true);
             } else if (message instanceof Messages.TimeReq m) {
                 out.writeLong(m.clientNanos());
+            } else if (message instanceof Messages.Queue m) {
+                writeSlot(out, m.slot());
+                writeString(out, m.label(), MAX_TEXT_BYTES, true);
+                out.writeByte(m.state());
+                out.writeByte(m.loop());
+                out.writeInt(m.index());
+                int count = Math.min(m.entries().size(), Messages.Queue.MAX_ENTRIES);
+                out.writeInt(count);
+                for (int i = 0; i < count; i++) {
+                    writeString(out, m.entries().get(i).title(), MAX_TEXT_BYTES, true);
+                    out.writeLong(m.entries().get(i).durationMs());
+                }
+            } else if (message instanceof Messages.Open m) {
+                writeSlot(out, m.slot());
+            } else if (message instanceof Messages.Control m) {
+                writeSlot(out, m.slot());
+                out.writeByte(m.action());
+                out.writeInt(m.arg());
             }
         } catch (IOException e) {
             throw new IllegalStateException(e); // ByteArrayOutputStream では起きない
@@ -126,6 +146,24 @@ public final class Codec {
                     yield new Messages.Error(slot, trackId, reason, readString(in));
                 }
                 case Messages.TimeReq.TYPE -> new Messages.TimeReq(in.readLong());
+                case Messages.Queue.TYPE -> {
+                    Messages.Slot slot = readSlot(in);
+                    String label = readString(in);
+                    byte state = in.readByte();
+                    byte loop = in.readByte();
+                    int index = in.readInt();
+                    int count = in.readInt();
+                    if (count < 0 || count > Messages.Queue.MAX_ENTRIES) {
+                        throw new DecodeException("キューの曲数が不正: " + count);
+                    }
+                    List<Messages.QueueEntry> entries = new ArrayList<>(count);
+                    for (int i = 0; i < count; i++) {
+                        entries.add(new Messages.QueueEntry(readString(in), in.readLong()));
+                    }
+                    yield new Messages.Queue(slot, label, state, loop, index, entries);
+                }
+                case Messages.Open.TYPE -> new Messages.Open(readSlot(in));
+                case Messages.Control.TYPE -> new Messages.Control(readSlot(in), in.readByte(), in.readInt());
                 default -> throw new DecodeException("未知の種別: 0x" + Integer.toHexString(type));
             };
         } catch (EOFException e) {

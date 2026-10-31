@@ -35,6 +35,10 @@ public final class RadioPlayerCommand implements TabExecutor {
             player.sendMessage("このコマンドを使う権限がありません。");
             return true;
         }
+        if (args.length == 1 && args[0].equalsIgnoreCase("popup") && radios.find("popup") == null) {
+            service.chooseRadio(player.getUniqueId(), radios.names());
+            return true;
+        }
         if (args.length < 2) {
             player.sendMessage("使い方: /rp <ラジオ名> <play|playlist|add|pause|stop|list|skip|previous|keep>");
             return true;
@@ -64,12 +68,14 @@ public final class RadioPlayerCommand implements TabExecutor {
         }
         if (args.length == 1) {
             candidates.addAll(radios.names());
+            candidates.add("popup");
         } else if (args.length == 2) {
             candidates.addAll(RadioPlayerService.SUB_COMMANDS);
         } else {
             String sub = args[1].toLowerCase(Locale.ROOT);
             if (args.length == 3 && sub.equals("list")) {
                 candidates.add("score");
+                candidates.add("popup");
             } else if (args.length == 4 && (sub.equals("play") || sub.equals("playlist"))) {
                 candidates.add("loop"); // loop は URL の後ろだけ
             }

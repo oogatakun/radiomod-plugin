@@ -22,6 +22,10 @@ public final class ProtocolHandler {
         void hello(UUID player);
 
         void error(UUID player, Messages.Error error);
+
+        /** プレーヤー画面の操作(CONTROL)。 */
+        default void control(UUID player, Messages.Control control) {
+        }
     }
 
     private final Sender sender;
@@ -64,6 +68,10 @@ public final class ProtocolHandler {
         } else if (message instanceof Messages.Error error) {
             if (hasMod(player)) {
                 events.error(player, error);
+            }
+        } else if (message instanceof Messages.Control control) {
+            if (hasMod(player)) {
+                events.control(player, control);
             }
         } else {
             warn.accept(name + " から未処理のメッセージ: " + message);

@@ -20,6 +20,9 @@ public final class NetService implements PluginMessageListener, Listener {
 
         default void onError(Player player, Messages.Error error) {
         }
+
+        default void onControl(Player player, Messages.Control control) {
+        }
     }
 
     private final Plugin plugin;
@@ -50,6 +53,14 @@ public final class NetService implements PluginMessageListener, Listener {
                         Player p = plugin.getServer().getPlayer(id);
                         if (p != null) {
                             handlers.forEach(h -> h.onError(p, error));
+                        }
+                    }
+
+                    @Override
+                    public void control(UUID id, Messages.Control control) {
+                        Player p = plugin.getServer().getPlayer(id);
+                        if (p != null) {
+                            handlers.forEach(h -> h.onControl(p, control));
                         }
                     }
                 });

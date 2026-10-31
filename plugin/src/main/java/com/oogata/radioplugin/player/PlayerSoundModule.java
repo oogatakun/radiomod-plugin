@@ -80,6 +80,15 @@ public final class PlayerSoundModule implements Listener, NetService.Handler {
         service.onError(player.getUniqueId(), error);
     }
 
+    @Override
+    public void onControl(Player player, Messages.Control control) {
+        // 共有の操作は /ps all と同じ権限、個人の操作は /ps と同じ権限
+        String permission = control.slot().slotType() == Messages.Slot.SHARED ? "radioplugin.ps.all" : "radioplugin.ps";
+        if (control.slot().slotType() != Messages.Slot.RADIO && player.hasPermission(permission)) {
+            service.control(player.getUniqueId(), control);
+        }
+    }
+
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         service.onQuit(event.getPlayer().getUniqueId());

@@ -28,7 +28,14 @@ class CodecTest {
             new Messages.Time(123456789L, 1_700_000_000_000L),
             new Messages.Hello(Messages.PROTOCOL_VERSION, "1.0.0"),
             new Messages.Error(RADIO, 5L, Messages.Error.DECODE_FAILED, "失敗"),
-            new Messages.TimeReq(-5L));
+            new Messages.TimeReq(-5L),
+            new Messages.Queue(RADIO, "ラジオ1", Messages.Queue.PLAYING, Messages.Queue.LOOP_PLAYLIST, 1,
+                    List.of(new Messages.QueueEntry("曲A", 180_000L), new Messages.QueueEntry("LIVE", -1L))),
+            new Messages.Queue(Messages.Slot.PERSONAL_SLOT, "", Messages.Queue.STOPPED, Messages.Queue.LOOP_NONE, -1,
+                    List.of()),
+            new Messages.Open(Messages.Slot.SHARED_SLOT),
+            new Messages.Control(RADIO, Messages.Control.JUMP, 7),
+            new Messages.Control(Messages.Slot.PERSONAL_SLOT, Messages.Control.REFRESH, 0));
 
     @Test
     void すべてのメッセージが往復で同じ値になる() throws Exception {

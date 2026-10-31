@@ -255,6 +255,36 @@ public final class PlaybackEngine {
         return Result.OK;
     }
 
+    /** キューの index 番目の曲を、最初から再生する(プレーヤー画面で曲を選んだとき)。範囲外や、ライブの再生中は何もしない。 */
+    public Result jump(int target) {
+        if (target < 0 || target >= queue.size()) {
+            return Result.EMPTY;
+        }
+        Track current = currentTrack();
+        if (current != null && current.live() && state != State.STOPPED) {
+            return Result.LIVE;
+        }
+        index = target;
+        startCurrent(true);
+        return Result.OK;
+    }
+
+    /** loop を なし → 単曲 → 全体 → なし の順に切り替える。今の曲がライブなら、単曲は飛ばす。切り替えたあとの値を返す。 */
+    public Loop cycleLoop() {
+        Loop next = switch (loop) {
+            case NONE -> Loop.SINGLE;
+            case SINGLE -> Loop.PLAYLIST;
+            case PLAYLIST -> Loop.NONE;
+        };
+        Track current = currentTrack();
+        if (next == Loop.SINGLE && current != null && current.live()) {
+            next = Loop.PLAYLIST;
+        }
+        loop = next;
+        trace("loop=" + loop);
+        return loop;
+    }
+
     /** mod から ERROR が届いた。現在の曲のものだけを扱い、飛ばすか止める。 */
     public ErrorOutcome onError(long errorTrackId) {
         if (state == State.STOPPED || errorTrackId != trackId) {
