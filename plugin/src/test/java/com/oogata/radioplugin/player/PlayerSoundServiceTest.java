@@ -425,19 +425,51 @@ class PlayerSoundServiceTest {
         cmd(bob, "list");
         assertEquals("キューは空です。", host.lastChat(bob)); // bob 自身の個人キュー
         assertEquals(buttonsBefore, host.buttons.get(bob).size()); // 確認のボタンは出ない
-        cmd(bob, "list", "score");
-        assertEquals("キューが空です", host.lastChat(bob)); // 空のキューでは表示せず、切り替え状態も変えない
-        assertFalse(host.scores.containsKey(bob));
-        assertEquals(buttonsBefore, host.buttons.get(bob).size());
+        all(bob, "list", "score");
+        assertTrue(host.scores.containsKey(bob));
     }
 
     @Test
-    void 空のキューでlist_scoreを打っても_次に曲を入れたあとの実行で表示される() {
+    void キューが空のlist_scoreは空と返し_切り替え状態を変えない() {
         cmd(alice, "list", "score");
+        assertEquals("キューが空です。", host.lastChat(alice));
         assertFalse(host.scores.containsKey(alice));
         cmd(alice, "play", A_URL);
+        cmd(alice, "list", "score"); // 空の実行が状態を反転させていなければ、ここで表示される
+        assertTrue(host.scores.containsKey(alice));
+    }
+
+    @Test
+    void 表示中のサイドバーはキューや曲の変化に合わせて更新される() {
+        cmd(alice, "playlist", LIST_URL);
+        cmd(alice, "list", "score");
+        assertEquals(List.of("▶1 l1", " 2 l2", " 3 l3"), host.scores.get(alice));
+        cmd(alice, "skip");
+        assertEquals(List.of(" 1 l1", "▶2 l2", " 3 l3"), host.scores.get(alice));
+        cmd(alice, "add", A_URL);
+        assertEquals(4, host.scores.get(alice).size());
+        clock.advance(500 + 10_000); // 曲が自動で進む
+        ps.tick();
+        assertEquals("▶3 l3", host.scores.get(alice).get(2));
+        cmd(alice, "stop");
+        assertFalse(host.scores.containsKey(alice)); // 空になったら消える
+        cmd(alice, "play", A_URL);
+        assertFalse(host.scores.containsKey(alice)); // 表示中の状態も解除されている
         cmd(alice, "list", "score");
         assertTrue(host.scores.containsKey(alice));
+    }
+
+    @Test
+    void 共有キューの表示も更新され_共有が終わると消える() {
+        cmd(alice, "playlist", LIST_URL);
+        all(alice, "");
+        cmd(bob, "listen");
+        all(bob, "list", "score");
+        assertEquals("▶1 l1", host.scores.get(bob).get(0));
+        all(alice, "skip");
+        assertEquals("▶2 l2", host.scores.get(bob).get(1));
+        all(alice, "stop");
+        assertFalse(host.scores.containsKey(bob));
     }
 
     @Test
