@@ -2,6 +2,9 @@ package com.oogata.radiomod.audio;
 
 import com.oogata.radiomod.RadioMod;
 import com.oogata.radiomod.net.Messages;
+import com.oogata.radiomod.sync.DriftCorrector;
+import com.oogata.radiomod.sync.SlotControl;
+import com.oogata.radiomod.sync.StartGate;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter;
@@ -14,6 +17,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayDeque;
 import java.util.function.DoubleSupplier;
+import java.util.function.LongSupplier;
 import org.lwjgl.openal.AL10;
 import org.lwjgl.openal.ALC10;
 
@@ -26,7 +30,7 @@ import org.lwjgl.openal.ALC10;
  * <p>再生中に位置を飛ばすのは {@link #seek} だけで、呼び出し側が「曲の始め・再開・取得が途切れたあとの再開」
  * のときだけ使う。ずれの補正には {@link #setSpeedDeviation} の微調整を使う。
  */
-public final class SlotPlayer implements AutoCloseable {
+public final class SlotPlayer implements AutoCloseable, SlotControl {
 
     public enum State { IDLE, LOADING, BUFFERING, PLAYING, PAUSED, ENDED }
 
@@ -37,6 +41,8 @@ public final class SlotPlayer implements AutoCloseable {
     private static final int PREBUFFER = 3;
     private static final int QUEUE_TARGET = 8;
     private static final long TICK_MS = 10;
+    /** ずれを測って速度の目標を決める間隔。 */
+    private static final long DRIFT_INTERVAL_NANOS = 1_000_000_000L;
 
     private final Messages.Slot slot;
     private final DoubleSupplier gain;
@@ -45,6 +51,8 @@ public final class SlotPlayer implements AutoCloseable {
 
     private final PlayedPosition position = new PlayedPosition(Decoder.SAMPLE_RATE);
     private final SpeedSmoother speed = new SpeedSmoother();
+    private final DriftCorrector drift = new DriftCorrector();
+    private final StartGate gate = new StartGate();
     private final ArrayDeque<Integer> freeBuffers = new ArrayDeque<>();
     private final ArrayDeque<int[]> queued = new ArrayDeque<>(); // {bufferId, frames}
 
@@ -55,6 +63,12 @@ public final class SlotPlayer implements AutoCloseable {
     private boolean trackDone;
     private boolean live;
     private long durationMs = -1;
+    /** 鳴らすべき位置。null なら位置合わせをしない。 */
+    private LongSupplier target;
+    private boolean pauseRequested;
+    private long pausePositionMs = -1;
+    private boolean announced;
+    private long lastDriftNanos;
 
     private long alContext;
     private int source;
@@ -79,8 +93,12 @@ public final class SlotPlayer implements AutoCloseable {
 
     // ---- 操作 ----
 
-    /** URL を取得して、startMs の位置から鳴らす。前の曲はすぐ止める。失敗は listener に届く。 */
-    public void play(String url, long startMs) {
+    /**
+     * URL を取得して鳴らす。前の曲はすぐ止める。失敗は listener に届く。
+     * 鳴らす位置は desiredPositionMs（鳴らすべき位置）に合わせ、負のあいだは無音で待つ。null なら取得した時点から鳴らす。
+     */
+    @Override
+    public void play(String url, LongSupplier desiredPositionMs) {
         String checked;
         try {
             checked = UrlValidator.validate(url);
@@ -96,16 +114,20 @@ public final class SlotPlayer implements AutoCloseable {
             resetPlayback();
             gen = ++generation;
             state = State.LOADING;
-            position.reset(Math.max(0, startMs));
+            target = desiredPositionMs;
+            pauseRequested = false;
+            pausePositionMs = -1;
+            announced = false;
         }
         try {
-            Decoder.loader().loadItem(checked, new LoadHandler(gen, Math.max(0, startMs)));
+            Decoder.loader().loadItem(checked, new LoadHandler(gen));
         } catch (Throwable t) {
             fail(AudioFailure.other("読み込みを始められません: " + t));
         }
     }
 
-    public void pause() {
+    @Override
+    public void pause(long positionMs) {
         synchronized (lock) {
             if (state == State.PLAYING) {
                 if (source != 0) {
@@ -114,21 +136,36 @@ public final class SlotPlayer implements AutoCloseable {
                 state = State.PAUSED;
             } else if (state == State.BUFFERING) {
                 state = State.PAUSED;
+            } else if (state == State.LOADING) {
+                // 取得中の一時停止。止まった位置から取得し、取得が終わったら止まったままにする。
+                pauseRequested = true;
+                pausePositionMs = Math.max(0, positionMs);
             }
         }
     }
 
+    /** 再開。鳴らすべき位置が決まっているときは、位置を確かめてから（ずれていれば合わせ直して）鳴らし始める。 */
+    @Override
     public void resume() {
         synchronized (lock) {
-            if (state == State.PAUSED) {
-                state = queued.isEmpty() ? State.BUFFERING : State.PLAYING;
-                if (state == State.PLAYING && source != 0) {
-                    AL10.alSourcePlay(source);
+            if (state == State.LOADING) {
+                pauseRequested = false;
+            } else if (state == State.PAUSED) {
+                gate.reset();
+                drift.reset();
+                if (target != null && !live) {
+                    state = State.BUFFERING;
+                } else {
+                    state = queued.isEmpty() ? State.BUFFERING : State.PLAYING;
+                    if (state == State.PLAYING && source != 0) {
+                        AL10.alSourcePlay(source);
+                    }
                 }
             }
         }
     }
 
+    @Override
     public void stop() {
         synchronized (lock) {
             resetPlayback();
@@ -143,22 +180,26 @@ public final class SlotPlayer implements AutoCloseable {
      */
     public boolean seek(long positionMs) {
         synchronized (lock) {
-            if (track == null || live || !track.isSeekable()) {
-                return false;
-            }
-            long target = Math.max(0, positionMs);
-            if (durationMs > 0) {
-                target = Math.min(target, durationMs);
-            }
-            flushOutput();
-            trackDone = false;
-            position.reset(target);
-            track.setPosition(target);
-            if (state == State.PLAYING || state == State.ENDED) {
-                state = State.BUFFERING;
-            }
-            return true;
+            return seekLocked(positionMs);
         }
+    }
+
+    private boolean seekLocked(long positionMs) {
+        if (track == null || live || !track.isSeekable()) {
+            return false;
+        }
+        long to = Math.max(0, positionMs);
+        if (durationMs > 0) {
+            to = Math.min(to, durationMs);
+        }
+        flushOutput();
+        trackDone = false;
+        position.reset(to);
+        track.setPosition(to);
+        if (state == State.PLAYING || state == State.ENDED) {
+            state = State.BUFFERING;
+        }
+        return true;
     }
 
     /** 速度の目標のずれ。+0.01 なら 1% 速く。最大 ±2% で、実際の速度はなめらかに近づく。 */
@@ -174,11 +215,33 @@ public final class SlotPlayer implements AutoCloseable {
             if (track == null || state == State.IDLE || state == State.LOADING) {
                 return -1;
             }
-            long offset = 0;
-            if (source != 0 && !queued.isEmpty() && contextValid()) {
-                offset = AL10.alGetSourcei(source, org.lwjgl.openal.AL11.AL_SAMPLE_OFFSET);
-            }
-            return position.positionMs(offset);
+            return position.positionMs(offsetFrames());
+        }
+    }
+
+    /** いま鳴っている（または一時停止している）バッファ列の先頭からのフレーム数。鳴っていなければ 0。lock の中で呼ぶ。 */
+    private long offsetFrames() {
+        if (source == 0 || queued.isEmpty() || !contextValid()) {
+            return 0;
+        }
+        int alState = AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE);
+        if (alState != AL10.AL_PLAYING && alState != AL10.AL_PAUSED) {
+            return 0;
+        }
+        return AL10.alGetSourcei(source, org.lwjgl.openal.AL11.AL_SAMPLE_OFFSET);
+    }
+
+    /** 同期の確認用。ずれ = 鳴らすべき位置 - 鳴っている位置（正なら遅れている）。位置が分からないものは -1。 */
+    public record Snapshot(State state, long desiredMs, long actualMs, double speed, boolean correcting,
+                           boolean live, boolean synced) {
+    }
+
+    public Snapshot snapshot() {
+        synchronized (lock) {
+            long desired = target == null ? -1 : target.getAsLong();
+            long actual = track == null || state == State.IDLE || state == State.LOADING
+                    ? -1 : position.positionMs(offsetFrames());
+            return new Snapshot(state, desired, actual, speed.rate(), drift.isCorrecting(), live, target != null);
         }
     }
 
@@ -257,7 +320,12 @@ public final class SlotPlayer implements AutoCloseable {
         durationMs = -1;
         flushOutput();
         speed.reset();
+        drift.reset();
+        gate.reset();
         position.reset(0);
+        target = null;
+        pauseRequested = false;
+        pausePositionMs = -1;
     }
 
     private void flushOutput() {
@@ -359,7 +427,10 @@ public final class SlotPlayer implements AutoCloseable {
                     } catch (RuntimeException e) {
                         failure = AudioFailure.other("再生中の内部エラー: " + e);
                     }
-                    started = before == State.BUFFERING && state == State.PLAYING;
+                    started = before == State.BUFFERING && state == State.PLAYING && !announced;
+                    if (started) {
+                        announced = true;
+                    }
                     if (failure == null && state == State.ENDED) {
                         finished = true;
                         track = null;
@@ -408,18 +479,61 @@ public final class SlotPlayer implements AutoCloseable {
         AL10.alSourcef(source, AL10.AL_GAIN, (float) Math.max(0, gain.getAsDouble()));
 
         if (state == State.BUFFERING && (queued.size() >= PREBUFFER || (trackDone && !queued.isEmpty()))) {
-            AL10.alSourcePlay(source);
-            state = State.PLAYING;
+            if (startGateOpen()) {
+                AL10.alSourcePlay(source);
+                state = State.PLAYING;
+                lastDriftNanos = now;
+            }
         } else if (state == State.PLAYING) {
             int alState = AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE);
             if (alState != AL10.AL_PLAYING && !queued.isEmpty()) {
-                // 取得が間に合わず、音が途切れた。溜まったぶんからまた鳴らす。
-                AL10.alSourcePlay(source);
+                // 取得が間に合わず、音が途切れた。溜め直してから、鳴らすべき位置を確かめて鳴らし直す。
+                state = State.BUFFERING;
             } else if (queued.isEmpty() && trackDone && pending == null) {
                 state = State.ENDED;
+            } else {
+                correctDrift(now);
             }
         }
         alCheck("tick");
+    }
+
+    /**
+     * 鳴らし始めてよいか。音が止まっているいまだけ、位置を合わせ直してよい。
+     * 位置合わせをしない音源（target が null）とライブは、すぐ鳴らす。
+     */
+    private boolean startGateOpen() {
+        if (target == null || live) {
+            return true;
+        }
+        long desired = target.getAsLong();
+        boolean canSeek = track != null && track.isSeekable();
+        StartGate.Decision d = gate.decide(desired, position.positionMs(offsetFrames()), canSeek);
+        switch (d.action()) {
+            case PLAY:
+                return true;
+            case SEEK:
+                RadioMod.LOGGER.info("[{}] 開始位置を合わせ直す: 鳴らすべき位置 {}ms → {}ms から", describe(), desired, d.seekToMs());
+                seekLocked(d.seekToMs());
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    /** 約1秒ごとに、鳴らすべき位置と鳴っている位置の差から、速度の目標を決める。位置は飛ばさない。 */
+    private void correctDrift(long nowNanos) {
+        if (target == null || live || nowNanos - lastDriftNanos < DRIFT_INTERVAL_NANOS) {
+            return;
+        }
+        lastDriftNanos = nowNanos;
+        long desired = target.getAsLong();
+        if (desired < 0) {
+            speed.setTarget(0);
+            return;
+        }
+        long diff = desired - position.positionMs(offsetFrames());
+        speed.setTarget(drift.update(diff));
     }
 
     /** デコード済みのフレームを集めて、OpenAL のバッファに入れて音源に積む。 */
@@ -464,11 +578,9 @@ public final class SlotPlayer implements AutoCloseable {
 
     private final class LoadHandler implements AudioLoadResultHandler {
         private final int gen;
-        private final long startMs;
 
-        LoadHandler(int gen, long startMs) {
+        LoadHandler(int gen) {
             this.gen = gen;
-            this.startMs = startMs;
         }
 
         @Override
@@ -515,7 +627,13 @@ public final class SlotPlayer implements AutoCloseable {
                 }
                 live = loaded.getInfo().isStream;
                 durationMs = live ? -1 : loaded.getDuration();
-                long start = startMs;
+                long start = 0;
+                if (pausePositionMs >= 0) {
+                    start = pausePositionMs;
+                } else if (target != null && !live) {
+                    long desired = target.getAsLong();
+                    start = StartGate.initialStart(desired);
+                }
                 if (start > 0 && (live || !loaded.isSeekable())) {
                     start = 0; // 位置を合わせ直せない音源は、取得した時点から鳴らす
                 }
@@ -551,7 +669,9 @@ public final class SlotPlayer implements AutoCloseable {
                 track = loaded;
                 trackDone = false;
                 lastTickNanos = 0;
-                state = State.BUFFERING;
+                state = pauseRequested ? State.PAUSED : State.BUFFERING;
+                pauseRequested = false;
+                pausePositionMs = -1;
                 player.playTrack(loaded);
                 startWorker();
             }

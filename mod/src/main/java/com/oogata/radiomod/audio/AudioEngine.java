@@ -33,6 +33,11 @@ public final class AudioEngine implements AutoCloseable {
         return players.computeIfAbsent(slot, s -> new SlotPlayer(s, () -> gainFor(s.slotType()), new Forwarder()));
     }
 
+    /** いま作られているスロットの再生。デバッグ表示用。 */
+    public Map<Messages.Slot, SlotPlayer> slots() {
+        return Map.copyOf(players);
+    }
+
     public void setListener(PlaybackListener listener) {
         this.listener = listener == null ? new PlaybackListener() {
         } : listener;

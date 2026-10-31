@@ -22,7 +22,8 @@ public final class RadioMod {
         if (net.minecraftforge.fml.loading.FMLEnvironment.dist == Dist.CLIENT) {
             RadioNet.init();
             net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(
-                    com.oogata.radiomod.debug.DebugCommand::onRegister);
+                    (net.minecraftforge.client.event.RegisterClientCommandsEvent e) ->
+                            com.oogata.radiomod.debug.DebugCommand.register(e.getDispatcher()));
         }
     }
 }
