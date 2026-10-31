@@ -1,5 +1,6 @@
 package com.oogata.radiomod.sync;
 
+import com.oogata.radiomod.net.Messages;
 import java.util.function.LongSupplier;
 
 /** 1つのスロットの再生の操作。{@code SlotPlayer} が実装し、テストでは偽物に差し替える。 */
@@ -22,5 +23,17 @@ public interface SlotControl {
     /** 診断ログ用の状態名（IDLE / LOADING / BUFFERING / PLAYING など）。 */
     default String stateName() {
         return "-";
+    }
+
+    /** ラジオのスロットだけ: PLAY で届いた置き場所を、play の前に渡す。 */
+    default void place(Messages.RadioTarget target) {
+    }
+
+    /** ラジオのスロットだけ: MOVE で届いた新しい座標。 */
+    default void move(String dimension, double x, double y, double z) {
+    }
+
+    /** ラジオのスロットだけ: STOP のあと、このスロットの持ち物を片付ける。 */
+    default void dispose() {
     }
 }

@@ -55,15 +55,21 @@ public final class SlotRouter {
             }
         } else if (message instanceof Messages.Stop m) {
             if (states.remove(m.slot()) != null) {
-                controls.apply(m.slot()).stop();
+                SlotControl control = controls.apply(m.slot());
+                control.stop();
+                if (m.slot().slotType() == Messages.Slot.RADIO) {
+                    control.dispose(); // 撤去されたラジオの再生を片付ける
+                }
             }
         } else if (message instanceof Messages.Sync m) {
             SlotState s = states.get(m.slot());
             if (s != null) {
                 s.originMs = m.originMs(); // 位置は飛ばさず、補正の目標だけを変える
             }
-        } else if (message instanceof Messages.Move) {
-            // ラジオのスロットはステップ4で扱う
+        } else if (message instanceof Messages.Move m) {
+            if (states.containsKey(m.slot())) {
+                controls.apply(m.slot()).move(m.dimension(), m.x(), m.y(), m.z());
+            }
         } else {
             RadioMod.LOGGER.warn("想定外のメッセージを無視: {}", message);
         }
@@ -107,15 +113,15 @@ public final class SlotRouter {
     }
 
     private void play(Messages.Play m) {
-        if (m.slot().slotType() == Messages.Slot.RADIO) {
-            RadioMod.LOGGER.info("ラジオスロットの PLAY は未対応のため無視: {}", m.slot());
-            return;
-        }
         boolean live = m.durationMs() < 0;
         SlotState state = new SlotState(m.trackId(), live, m.originMs());
         states.put(m.slot(), state);
         // ライブは位置合わせをしない（protocol.md 11）。
-        controls.apply(m.slot()).play(m.url(), live ? null : desired(state));
+        SlotControl control = controls.apply(m.slot());
+        if (m.radio() != null) {
+            control.place(m.radio());
+        }
+        control.play(m.url(), live ? null : desired(state));
     }
 
     private LongSupplier desired(SlotState state) {
@@ -143,7 +149,11 @@ public final class SlotRouter {
     /** 切断したとき。全スロットを止めて、状態を捨てる。 */
     public synchronized void stopAll() {
         for (Messages.Slot slot : states.keySet()) {
-            controls.apply(slot).stop();
+            SlotControl control = controls.apply(slot);
+            control.stop();
+            if (slot.slotType() == Messages.Slot.RADIO) {
+                control.dispose();
+            }
         }
         states.clear();
     }

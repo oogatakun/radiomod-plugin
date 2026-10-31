@@ -19,7 +19,7 @@ class SlotRouterTest {
 
     private static final long MS = 1_000_000L;
 
-    private static final class FakeControl implements SlotControl {
+    private static class FakeControl implements SlotControl {
         final List<String> calls = new ArrayList<>();
         LongSupplier desired;
 
@@ -142,14 +142,6 @@ class SlotRouterTest {
     }
 
     @Test
-    void ラジオスロットはこのステップでは鳴らさない() {
-        Messages.Slot radio = Messages.Slot.radio(UUID.randomUUID());
-        router.handle(play(radio, 180_000, 1_000_000L));
-        router.handle(new Messages.Move(radio, "minecraft:overworld", 1, 2, 3));
-        assertTrue(controls.isEmpty());
-    }
-
-    @Test
     void 切断で全スロットを止める() {
         router.handle(play(Messages.Slot.PERSONAL_SLOT, 180_000, 1_000_000L));
         router.handle(play(Messages.Slot.SHARED_SLOT, 180_000, 1_000_000L));
@@ -162,6 +154,41 @@ class SlotRouterTest {
     @Test
     void サーバー向けのメッセージが届いても例外にならない() {
         router.handle(new Messages.Hello(2, "x"));
+        assertTrue(controls.isEmpty());
+    }
+
+    @Test
+    void ラジオのPLAYは置き場所を渡してから再生を始め_MOVEで座標を変え_STOPで片付ける() {
+        class RadioFake extends FakeControl {
+            @Override
+            public void place(Messages.RadioTarget target) {
+                calls.add("place " + target.dimension() + " " + target.range());
+            }
+
+            @Override
+            public void move(String dimension, double x, double y, double z) {
+                calls.add("move " + dimension + " " + x + "," + y + "," + z);
+            }
+
+            @Override
+            public void dispose() {
+                calls.add("dispose");
+            }
+        }
+        Messages.Slot radio = Messages.Slot.radio(UUID.randomUUID());
+        RadioFake fake = new RadioFake();
+        controls.put(radio, fake);
+        router.handle(play(radio, 180_000, 1_000_000L));
+        router.handle(new Messages.Move(radio, "minecraft:the_nether", 1, 2, 3));
+        router.handle(new Messages.Stop(radio));
+        assertEquals(List.of("place minecraft:overworld 24.0", "play https://example.com/a.mp3",
+                "move minecraft:the_nether 1.0,2.0,3.0", "stop", "dispose"), fake.calls);
+    }
+
+    @Test
+    void 再生していないラジオへのMOVEは無視する() {
+        Messages.Slot radio = Messages.Slot.radio(UUID.randomUUID());
+        router.handle(new Messages.Move(radio, "minecraft:overworld", 1, 2, 3));
         assertTrue(controls.isEmpty());
     }
 }

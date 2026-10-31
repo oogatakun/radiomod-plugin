@@ -3,6 +3,7 @@ package com.oogata.radiomod.audio;
 import com.oogata.radiomod.RadioMod;
 import com.oogata.radiomod.net.Messages;
 import com.oogata.radiomod.sync.DriftCorrector;
+import com.oogata.radiomod.sync.RadioPlace;
 import com.oogata.radiomod.sync.SlotControl;
 import com.oogata.radiomod.sync.StartGate;
 import com.oogata.radiomod.sync.SyncSettings;
@@ -51,6 +52,9 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private final Messages.Slot slot;
     private final DoubleSupplier gain;
     private final PlaybackListener listener;
+    /** ラジオのとき: 置き場所。あれば、モノラルにして OpenAL の音源をその座標に置き、距離で音量を下げる。個人・共有は null。 */
+    private final RadioPlace place;
+    private ByteBuffer monoScratch;
     private final Object lock = new Object();
 
     private final PlayedPosition position = new PlayedPosition(Decoder.SAMPLE_RATE);
@@ -106,9 +110,14 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private boolean closed;
 
     public SlotPlayer(Messages.Slot slot, DoubleSupplier gain, PlaybackListener listener) {
+        this(slot, gain, listener, null);
+    }
+
+    public SlotPlayer(Messages.Slot slot, DoubleSupplier gain, PlaybackListener listener, RadioPlace place) {
         this.slot = slot;
         this.gain = gain;
         this.listener = listener;
+        this.place = place;
     }
 
     @Override
@@ -437,8 +446,16 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         AL10.alGetError();
         source = AL10.alGenSources();
         alCheck("alGenSources");
-        AL10.alSourcei(source, AL10.AL_SOURCE_RELATIVE, AL10.AL_TRUE);
-        AL10.alSource3f(source, AL10.AL_POSITION, 0f, 0f, 0f);
+        if (place == null) {
+            // 個人・共有: 位置を持たない普通のステレオ
+            AL10.alSourcei(source, AL10.AL_SOURCE_RELATIVE, AL10.AL_TRUE);
+            AL10.alSource3f(source, AL10.AL_POSITION, 0f, 0f, 0f);
+        } else {
+            // ラジオ: ワールドの座標に置く。聞く側の位置と向きは、Minecraft のサウンドエンジンが OpenAL のリスナーに入れている。
+            AL10.alSourcei(source, AL10.AL_SOURCE_RELATIVE, AL10.AL_FALSE);
+            AL10.alSource3f(source, AL10.AL_POSITION, (float) place.x(), (float) place.y(), (float) place.z());
+        }
+        // 距離による音量の下げ方は、OpenAL の距離モデルに任せず、自分で決める（tick で AL_GAIN に掛ける）。
         AL10.alSourcef(source, AL10.AL_ROLLOFF_FACTOR, 0f);
         allBuffers = new int[BUFFER_COUNT];
         for (int i = 0; i < BUFFER_COUNT; i++) {
@@ -583,7 +600,12 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         }
 
         AL10.alSourcef(source, AL10.AL_PITCH, (float) speed.step(dt));
-        AL10.alSourcef(source, AL10.AL_GAIN, (float) Math.max(0, gain.getAsDouble()));
+        double g = gain.getAsDouble();
+        if (place != null) {
+            AL10.alSource3f(source, AL10.AL_POSITION, (float) place.x(), (float) place.y(), (float) place.z());
+            g *= place.gain();
+        }
+        AL10.alSourcef(source, AL10.AL_GAIN, (float) Math.max(0, g));
 
         if (state == State.BUFFERING && (queued.size() >= PREBUFFER || (trackDone && !queued.isEmpty()))) {
             if (startGateOpen()) {
@@ -717,7 +739,15 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         pending.flip();
         fingerprint(pending);
         int buffer = freeBuffers.poll();
-        AL10.alBufferData(buffer, AL10.AL_FORMAT_STEREO16, pending, Decoder.SAMPLE_RATE);
+        if (place == null) {
+            AL10.alBufferData(buffer, AL10.AL_FORMAT_STEREO16, pending, Decoder.SAMPLE_RATE);
+        } else {
+            int monoBytes = pending.remaining() / 2;
+            if (monoScratch == null || monoScratch.capacity() < monoBytes) {
+                monoScratch = ByteBuffer.allocateDirect(monoBytes).order(ByteOrder.LITTLE_ENDIAN);
+            }
+            AL10.alBufferData(buffer, AL10.AL_FORMAT_MONO16, Pcm.downmixToMono(pending, monoScratch), Decoder.SAMPLE_RATE);
+        }
         AL10.alSourceQueueBuffers(source, buffer);
         queued.add(new int[] {buffer, pendingFrames});
         pending = null;

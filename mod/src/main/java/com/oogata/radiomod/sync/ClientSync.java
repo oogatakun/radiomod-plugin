@@ -28,7 +28,7 @@ public final class ClientSync {
     /** プレイヤーが設定する、出力機器の遅れの補正値（ms）。クライアント設定から書き込まれる。 */
     private static volatile long manualOffsetMs = 0;
     private static final SlotRouter ROUTER =
-            new SlotRouter(slot -> AudioEngine.get().slot(slot), CLOCK, () -> manualOffsetMs);
+            new SlotRouter(slot -> AudioEngine.get().control(slot), CLOCK, () -> manualOffsetMs);
 
     private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "radiomod-clock");
@@ -60,6 +60,7 @@ public final class ClientSync {
     public static void init() {
         AudioEngine engine = AudioEngine.get();
         engine.setMasterVolume(ClientSync::minecraftMasterVolume);
+        engine.setRadioListener(ClientSync::listenerPosition);
         engine.setListener(new PlaybackListener() {
             @Override
             public void onStarted(Messages.Slot slot) {
@@ -77,6 +78,16 @@ public final class ClientSync {
                 RadioNet.send(new Messages.Error(slot, ROUTER.trackIdOf(slot), failure.reason(), failure.detail()));
             }
         });
+    }
+
+    /** 聞く側の位置。OpenAL のリスナーに Minecraft が入れているのと同じ、カメラの位置。ワールドに入っていなければ null。 */
+    private static RadioPlace.ListenerPos listenerPosition() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.gameRenderer == null) {
+            return null;
+        }
+        var pos = mc.gameRenderer.getMainCamera().getPosition();
+        return new RadioPlace.ListenerPos(mc.level.dimension().location().toString(), pos.x, pos.y, pos.z);
     }
 
     private static double minecraftMasterVolume() {
