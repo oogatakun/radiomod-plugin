@@ -1,23 +1,28 @@
 package com.oogata.radiomod.client;
 
 import com.oogata.radiomod.client.PlayerBarModel.Action;
+import com.oogata.radiomod.net.Messages;
 import com.oogata.radiomod.sync.ClientSync;
 import com.oogata.radiomod.sync.SlotRouter.NowPlaying;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
-/** 画面の左下に出す、小さな音楽プレーヤーのバー。描画と、ボタンの当たり判定。 */
+/** 画面の右下に出す、小さな音楽プレーヤーのバー。描画と、ボタンの当たり判定。 */
 public final class PlayerBar {
 
-    static final int WIDTH = 230;
-    static final int HEIGHT = 24;
-    static final int MARGIN_X = 8;
-    static final int MARGIN_BOTTOM = 6;
     private static final int BUTTON_W = 18;
+    /** 右から: 閉じる、キューを見る、次へ、再生/一時停止、前へ。 */
+    private static final int BUTTONS = 5;
+    private static final int HOVER = 0x60FFFFFF;
+    /** 長いタイトルを流す速さ(px/秒)と、一周したときの空白(px)。 */
+    private static final double SCROLL_SPEED = 28;
+    private static final int SCROLL_GAP = 28;
 
     private static final PlayerBarModel MODEL = new PlayerBarModel();
     private static NowPlaying current;
+    private static long shownTrackId = -1;
+    private static long shownSinceNanos;
 
     private PlayerBar() {
     }
@@ -25,6 +30,11 @@ public final class PlayerBar {
     /** 今出す曲を選び直す。毎フレーム呼んでよい。 */
     public static boolean update() {
         current = MODEL.choose(ClientSync.router().nowPlaying()).orElse(null);
+        long id = current == null ? -1 : current.trackId();
+        if (id != shownTrackId) {
+            shownTrackId = id;
+            shownSinceNanos = System.nanoTime(); // 曲が変わったら、タイトルを頭から流し直す
+        }
         return current != null;
     }
 
@@ -32,17 +42,9 @@ public final class PlayerBar {
         return current != null;
     }
 
-    private static int left() {
-        return MARGIN_X;
-    }
-
-    private static int top(int screenHeight) {
-        return screenHeight - HEIGHT - MARGIN_BOTTOM;
-    }
-
-    /** ボタン(右から: 閉じる、次へ、再生/一時停止、前へ)の左端の x。 */
-    private static int buttonX(int index) {
-        return left() + WIDTH - BUTTON_W * (index + 1) - 2;
+    /** ボタン(右から数えて index 番目)の左端の x。 */
+    private static int buttonX(PlayerBarLayout l, int index) {
+        return l.x() + l.width() - BUTTON_W * (index + 1) - 2;
     }
 
     /** mouseX が -1 のときは、カーソルなしで描く(普段の表示)。 */
@@ -51,55 +53,74 @@ public final class PlayerBar {
         if (n == null) {
             return;
         }
+        PlayerBarLayout l = PlayerBarLayout.of(screenWidth, screenHeight);
         Font font = Minecraft.getInstance().font;
-        int x = left();
-        int y = top(screenHeight);
-        g.fill(x, y, x + WIDTH, y + HEIGHT, 0xD0181818);
+        g.fill(l.x(), l.y(), l.x() + l.width(), l.y() + l.height(), 0xD0181818);
 
         boolean canControl = PlayerBarModel.command(n.slot(), Action.TOGGLE) != null;
-        String[] labels = {"x", ">|", n.paused() ? ">" : "||", "|<"};
-        for (int i = 0; i < labels.length; i++) {
-            int bx = buttonX(i);
-            boolean enabled = i == 0 || canControl;
-            boolean hover = mouseX >= bx && mouseX < bx + BUTTON_W && mouseY >= y && mouseY < y + HEIGHT - 3;
+        // 左から: 前へ、再生/一時停止、次へ、キュー、閉じる
+        String[] labels = {"|<", n.paused() ? ">" : "||", ">|", "^", "x"};
+        for (int i = 0; i < BUTTONS; i++) {
+            int bx = buttonX(l, BUTTONS - 1 - i);
+            boolean enabled = canControl;
+            boolean hover = mouseX >= bx && mouseX < bx + BUTTON_W && mouseY >= l.y() && mouseY < l.y() + l.height() - 3;
             if (hover && enabled) {
-                g.fill(bx, y + 2, bx + BUTTON_W, y + HEIGHT - 5, 0x60FFFFFF);
+                g.fill(bx, l.y() + 2, bx + BUTTON_W, l.y() + l.height() - 5, HOVER);
             }
-            g.drawCenteredString(font, labels[i], bx + BUTTON_W / 2, y + 7, enabled ? 0xFFFFFFFF : 0xFF707070);
+            g.drawCenteredString(font, labels[i], bx + BUTTON_W / 2, l.y() + 7, enabled ? 0xFFFFFFFF : 0xFF707070);
         }
 
-        int textRight = buttonX(3) - 4;
-        String title = (n.slot().slotType() == com.oogata.radiomod.net.Messages.Slot.RADIO ? "[ラジオ] " : "") + n.title();
-        g.drawString(font, font.plainSubstrByWidth(title, textRight - (x + 8)), x + 8, y + 4, 0xFFFFFFFF, false);
+        int textLeft = l.x() + 8;
+        int textRight = buttonX(l, BUTTONS - 1) - 4;
+        String title = (n.slot().slotType() == Messages.Slot.RADIO ? "[ラジオ] " : "") + n.title();
+        drawMarquee(g, font, title, textLeft, textRight, l.y() + 4);
         String time = n.durationMs() > 0 && n.positionMs() >= 0
                 ? PlayerBarModel.time(n.positionMs()) + " / " + PlayerBarModel.time(n.durationMs())
                 : n.durationMs() < 0 ? "LIVE" : "";
-        g.drawString(font, time, x + 8, y + 14, 0xFFA0A0A0, false);
+        g.drawString(font, time, textLeft, l.y() + 14, 0xFFA0A0A0, false);
 
         // 進行バー
-        g.fill(x, y + HEIGHT - 2, x + WIDTH, y + HEIGHT, 0xFF404040);
+        g.fill(l.x(), l.y() + l.height() - 2, l.x() + l.width(), l.y() + l.height(), 0xFF404040);
         double p = PlayerBarModel.progress(n);
         if (p >= 0) {
-            g.fill(x, y + HEIGHT - 2, x + (int) (WIDTH * p), y + HEIGHT, 0xFFE8A0B8);
+            g.fill(l.x(), l.y() + l.height() - 2, l.x() + (int) (l.width() * p), l.y() + l.height(), 0xFFE8A0B8);
         }
     }
 
+    /** 入りきるタイトルはそのまま。入りきらないときは、右から左へ流す(一周したら、空白をあけて頭から)。 */
+    private static void drawMarquee(GuiGraphics g, Font font, String text, int left, int right, int y) {
+        int width = font.width(text);
+        int available = right - left;
+        if (width <= available) {
+            g.drawString(font, text, left, y, 0xFFFFFFFF, false);
+            return;
+        }
+        double seconds = (System.nanoTime() - shownSinceNanos) / 1e9;
+        int period = width + SCROLL_GAP;
+        // 最初の 1.5 秒は止めて読ませる
+        double moving = Math.max(0, seconds - 1.5);
+        int offset = (int) (moving * SCROLL_SPEED) % period;
+        g.enableScissor(left, y - 1, right, y + 10);
+        g.drawString(font, text, left - offset, y, 0xFFFFFFFF, false);
+        g.drawString(font, text, left - offset + period, y, 0xFFFFFFFF, false);
+        g.disableScissor();
+    }
+
     /** クリックされたら、対応する操作をする。バーの上でクリックされたら true。 */
-    public static boolean click(int screenHeight, double mouseX, double mouseY) {
+    public static boolean click(int screenWidth, int screenHeight, double mouseX, double mouseY) {
         NowPlaying n = current;
-        int y = top(screenHeight);
-        if (n == null || mouseX < left() || mouseX >= left() + WIDTH || mouseY < y || mouseY >= y + HEIGHT) {
+        PlayerBarLayout l = PlayerBarLayout.of(screenWidth, screenHeight);
+        if (n == null || !l.contains(mouseX, mouseY)) {
             return false;
         }
-        for (int i = 0; i < 4; i++) {
-            int bx = buttonX(i);
+        Action[] actions = {Action.CLOSE, Action.LIST, Action.NEXT, Action.TOGGLE, Action.PREVIOUS}; // 右から
+        for (int i = 0; i < BUTTONS; i++) {
+            int bx = buttonX(l, i);
             if (mouseX >= bx && mouseX < bx + BUTTON_W) {
-                switch (i) {
-                    case 0 -> MODEL.dismiss(n.trackId());
-                    case 1 -> send(n, Action.NEXT);
-                    case 2 -> send(n, Action.TOGGLE);
-                    default -> send(n, Action.PREVIOUS);
+                if (actions[i] == Action.CLOSE) {
+                    MODEL.dismiss(n.trackId()); // バーを隠す。曲を止められるもの(個人・共有)は、止めるコマンドも送る
                 }
+                send(n, actions[i]);
                 break;
             }
         }

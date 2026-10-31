@@ -48,6 +48,6 @@ public final class CursorScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        return button == 0 && PlayerBar.click(height, mouseX, mouseY);
+        return button == 0 && PlayerBar.click(width, height, mouseX, mouseY);
     }
 }

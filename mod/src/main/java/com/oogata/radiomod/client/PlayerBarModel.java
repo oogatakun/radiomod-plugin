@@ -11,7 +11,7 @@ import java.util.Set;
 /** 左下のバーに、どの曲を出すかと、ボタンが実行するコマンド。Minecraft には依存しない。 */
 public final class PlayerBarModel {
 
-    public enum Action { PREVIOUS, TOGGLE, NEXT }
+    public enum Action { PREVIOUS, TOGGLE, NEXT, LIST, CLOSE }
 
     /** × で隠した曲(trackId)。その曲が終わる(スロットから消える)までは出さない。 */
     private final Set<Long> dismissed = new HashSet<>();
@@ -42,17 +42,20 @@ public final class PlayerBarModel {
 
     /**
      * ボタンが実行するコマンド(先頭の / なし)。ラジオは、mod がラジオの名前を知らないため、まだ操作できない(null)。
+     * CLOSE は曲を止める。個人は止めてキューを空にする。共有は、全員の共有を終わらせないよう、自分が聞くのをやめるだけにする。
      */
     public static String command(Messages.Slot slot, Action action) {
-        String sub = switch (action) {
-            case PREVIOUS -> "previous";
-            case TOGGLE -> "pause";
-            case NEXT -> "skip";
-        };
-        return switch (slot.slotType()) {
-            case Messages.Slot.PERSONAL -> "ps " + sub;
-            case Messages.Slot.SHARED -> "ps all " + sub;
-            default -> null;
+        boolean shared = slot.slotType() == Messages.Slot.SHARED;
+        if (slot.slotType() == Messages.Slot.RADIO) {
+            return null;
+        }
+        String base = shared ? "ps all " : "ps ";
+        return switch (action) {
+            case PREVIOUS -> base + "previous";
+            case TOGGLE -> base + "pause";
+            case NEXT -> base + "skip";
+            case LIST -> base + "list";
+            case CLOSE -> shared ? "ps leave" : "ps stop";
         };
     }
 

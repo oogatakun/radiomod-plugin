@@ -56,9 +56,19 @@ class PlayerBarModelTest {
         assertEquals("ps pause", PlayerBarModel.command(Messages.Slot.PERSONAL_SLOT, Action.TOGGLE));
         assertEquals("ps skip", PlayerBarModel.command(Messages.Slot.PERSONAL_SLOT, Action.NEXT));
         assertEquals("ps previous", PlayerBarModel.command(Messages.Slot.PERSONAL_SLOT, Action.PREVIOUS));
+        assertEquals("ps list", PlayerBarModel.command(Messages.Slot.PERSONAL_SLOT, Action.LIST));
         assertEquals("ps all pause", PlayerBarModel.command(Messages.Slot.SHARED_SLOT, Action.TOGGLE));
         assertEquals("ps all skip", PlayerBarModel.command(Messages.Slot.SHARED_SLOT, Action.NEXT));
+        assertEquals("ps all list", PlayerBarModel.command(Messages.Slot.SHARED_SLOT, Action.LIST));
         assertNull(PlayerBarModel.command(Messages.Slot.radio(UUID.randomUUID()), Action.TOGGLE));
+        assertNull(PlayerBarModel.command(Messages.Slot.radio(UUID.randomUUID()), Action.LIST));
+    }
+
+    @Test
+    void 閉じるボタンは_個人なら止め_共有なら全員の共有を終わらせず自分が聞くのをやめる() {
+        assertEquals("ps stop", PlayerBarModel.command(Messages.Slot.PERSONAL_SLOT, Action.CLOSE));
+        assertEquals("ps leave", PlayerBarModel.command(Messages.Slot.SHARED_SLOT, Action.CLOSE));
+        assertNull(PlayerBarModel.command(Messages.Slot.radio(UUID.randomUUID()), Action.CLOSE));
     }
 
     @Test
