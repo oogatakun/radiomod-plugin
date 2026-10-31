@@ -19,9 +19,24 @@
             <id>spigot-repo</id>
             <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
         </repository>
+        <repository>
+            <id>lavalink-releases</id>
+            <url>https://maven.lavalink.dev/releases</url>
+        </repository>
     </repositories>
 
     <dependencies>
+        <!-- URL の長さ・タイトル・プレイリストの取得に使う。コンテナの判別（プローブ）にも natives が要る -->
+        <dependency>
+            <groupId>dev.arbjerg</groupId>
+            <artifactId>lavaplayer</artifactId>
+            <version>2.2.7</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.lavalink.youtube</groupId>
+            <artifactId>common</artifactId>
+            <version>1.18.2</version>
+        </dependency>
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
@@ -51,6 +66,61 @@
                 <configuration>
                     <argLine>-Dfile.encoding=UTF-8</argLine>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.3</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <!-- com.sedmelluq は付け替えない: natives（mp3 などの判別に使う JNI）がこの名前で結びついている -->
+                            <relocations>
+                                <relocation>
+                                    <pattern>dev.lavalink</pattern>
+                                    <shadedPattern>com.oogata.radioplugin.libs.lavalink</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.apache.http</pattern>
+                                    <shadedPattern>com.oogata.radioplugin.libs.http</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.fasterxml.jackson</pattern>
+                                    <shadedPattern>com.oogata.radioplugin.libs.jackson</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.jsoup</pattern>
+                                    <shadedPattern>com.oogata.radioplugin.libs.jsoup</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.grack</pattern>
+                                    <shadedPattern>com.oogata.radioplugin.libs.grack</shadedPattern>
+                                </relocation>
+                            </relocations>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
