@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +52,9 @@ public final class PlayerSoundService {
         boolean needAnnounce;
     }
 
+    private record ScoreView(boolean shared, List<String> lines) {
+    }
+
     private record Pending(String sub, List<String> args, long expiresAtMs) {
     }
 
@@ -68,7 +70,8 @@ public final class PlayerSoundService {
 
     private final Map<UUID, Personal> personals = new HashMap<>();
     private final Map<UUID, Pending> pending = new HashMap<>();
-    private final Set<UUID> scoreShown = new HashSet<>();
+    /** list score を表示中のプレイヤーと、見せている内容（共有か個人か・最後に出した行）。 */
+    private final Map<UUID, ScoreView> scoreViews = new HashMap<>();
     private Shared shared;
 
     public PlayerSoundService(PlayerHost host, TrackResolver resolver, Clock clock, Config config) {
@@ -84,6 +87,14 @@ public final class PlayerSoundService {
      * コマンドを実行する。sub は小文字にしたサブコマンド（all の場合は all の後ろ。空なら /ps all だけ）。
      */
     public void command(UUID actor, boolean all, String sub, List<String> args) {
+        try {
+            dispatch(actor, all, sub, args);
+        } finally {
+            refreshScores();
+        }
+    }
+
+    private void dispatch(UUID actor, boolean all, String sub, List<String> args) {
         if (all) {
             commandAll(actor, sub, args);
             return;
@@ -124,7 +135,7 @@ public final class PlayerSoundService {
 
     public void onQuit(UUID player) {
         pending.remove(player);
-        scoreShown.remove(player);
+        scoreViews.remove(player);
         personals.remove(player);
         if (shared != null && shared.listeners.remove(player) && shared.listeners.isEmpty()) {
             Shared ended = shared;
@@ -163,6 +174,7 @@ public final class PlayerSoundService {
             case IGNORED -> {
             }
         }
+        refreshScores();
     }
 
     /** 一定間隔（数tickごと）に呼ぶ。曲の終わりと SYNC の再送を進める。 */
@@ -173,6 +185,7 @@ public final class PlayerSoundService {
         if (shared != null) {
             shared.engine.tick();
         }
+        refreshScores();
     }
 
     // ---- /ps all ----
@@ -480,7 +493,7 @@ public final class PlayerSoundService {
                     return;
                 }
                 if (!args.isEmpty()) {
-                    toggleScore(actor, e);
+                    toggleScore(actor, ctx.shared(), e);
                 } else if (e.queue().isEmpty()) {
                     host.tell(actor, "キューは空です。");
                 } else {
@@ -520,14 +533,46 @@ public final class PlayerSoundService {
         return result.truncated() ? "（上限のため、先頭の" + result.tracks().size() + "曲だけです）" : "";
     }
 
-    private void toggleScore(UUID actor, PlaybackEngine e) {
-        if (scoreShown.remove(actor)) {
+    private void toggleScore(UUID actor, boolean sharedView, PlaybackEngine e) {
+        if (scoreViews.remove(actor) != null) {
             host.hideScore(actor);
             return;
         }
-        scoreShown.add(actor);
-        host.showScore(actor, "キュー", QueueFormatter.scoreLines(e.queue(), e.index(),
-                e.state() != PlaybackEngine.State.STOPPED));
+        if (e.queue().isEmpty()) {
+            host.tell(actor, "キューが空です。");
+            return;
+        }
+        List<String> lines = scoreLines(e);
+        scoreViews.put(actor, new ScoreView(sharedView, lines));
+        host.showScore(actor, "キュー", lines);
+    }
+
+    private static List<String> scoreLines(PlaybackEngine e) {
+        return QueueFormatter.scoreLines(e.queue(), e.index(), e.state() != PlaybackEngine.State.STOPPED);
+    }
+
+    /** キューや再生中の曲が変わっていたら、表示中のプレイヤーのサイドバーを作り直す。空になったら消す。 */
+    private void refreshScores() {
+        for (Map.Entry<UUID, ScoreView> entry : new ArrayList<>(scoreViews.entrySet())) {
+            UUID viewer = entry.getKey();
+            ScoreView view = entry.getValue();
+            PlaybackEngine e = null;
+            if (view.shared()) {
+                e = shared == null ? null : shared.engine;
+            } else if (personals.containsKey(viewer)) {
+                e = personals.get(viewer).engine;
+            }
+            if (e == null || e.queue().isEmpty()) {
+                scoreViews.remove(viewer);
+                host.hideScore(viewer);
+                continue;
+            }
+            List<String> lines = scoreLines(e);
+            if (!lines.equals(view.lines())) {
+                scoreViews.put(viewer, new ScoreView(view.shared(), lines));
+                host.showScore(viewer, "キュー", lines);
+            }
+        }
     }
 
     /** URL を取得し、成功したら onSuccess を呼ぶ。失敗はここで実行者に伝える。 */
