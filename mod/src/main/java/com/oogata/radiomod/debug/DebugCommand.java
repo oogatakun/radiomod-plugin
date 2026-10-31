@@ -60,9 +60,9 @@ public final class DebugCommand {
                     s.live() ? "ライブ: 位置合わせなし" : "位置合わせなし");
         }
         String diff = s.desiredMs() < 0 || s.actualMs() < 0 ? "-" : String.format("%+d", s.desiredMs() - s.actualMs());
-        return String.format("[%s] %s 鳴らすべき位置=%sms 鳴っている位置=%sms ずれ=%sms（正なら遅れ）速度=%+.2f%%%s",
+        return String.format("[%s] %s 鳴らすべき位置=%sms 鳴っている位置=%sms ずれ=%sms（正なら遅れ）速度=%+.2f%%%s 読み直し=%d回",
                 name, s.state(), ms(s.desiredMs()), ms(s.actualMs()), diff, (s.speed() - 1.0) * 100,
-                s.correcting() ? " 補正中" : "");
+                s.correcting() ? " 補正中" : "", s.gateSeeks());
     }
 
     private static String ms(long value) {

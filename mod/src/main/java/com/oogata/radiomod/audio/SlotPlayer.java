@@ -233,7 +233,7 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
 
     /** 同期の確認用。ずれ = 鳴らすべき位置 - 鳴っている位置（正なら遅れている）。位置が分からないものは -1。 */
     public record Snapshot(State state, long desiredMs, long actualMs, double speed, boolean correcting,
-                           boolean live, boolean synced) {
+                           boolean live, boolean synced, int gateSeeks) {
     }
 
     public Snapshot snapshot() {
@@ -241,7 +241,8 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
             long desired = target == null ? -1 : target.getAsLong();
             long actual = track == null || state == State.IDLE || state == State.LOADING
                     ? -1 : position.positionMs(offsetFrames());
-            return new Snapshot(state, desired, actual, speed.rate(), drift.isCorrecting(), live, target != null);
+            return new Snapshot(state, desired, actual, speed.rate(), drift.isCorrecting(), live, target != null,
+                    gate.seeks());
         }
     }
 
@@ -533,7 +534,8 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         }
         long desired = target.getAsLong();
         boolean canSeek = track != null && track.isSeekable();
-        StartGate.Decision d = gate.decide(desired, position.positionMs(offsetFrames()), canSeek);
+        StartGate.Decision d = gate.decide(desired, position.positionMs(offsetFrames()), canSeek,
+                System.nanoTime() / 1_000_000L);
         switch (d.action()) {
             case PLAY:
                 return true;
