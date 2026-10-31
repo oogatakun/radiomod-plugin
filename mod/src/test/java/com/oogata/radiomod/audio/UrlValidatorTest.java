@@ -2,6 +2,7 @@ package com.oogata.radiomod.audio;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.oogata.radiomod.net.Messages;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,21 @@ class UrlValidatorTest {
         assertEquals("http://example.com/a.mp3", UrlValidator.validate("http://example.com/a.mp3"));
         assertEquals("https://example.com:8000/stream?x=1", UrlValidator.validate("  https://example.com:8000/stream?x=1 "));
         assertEquals("HTTPS://EXAMPLE.COM/a", UrlValidator.validate("HTTPS://EXAMPLE.COM/a"));
+    }
+
+    @Test
+    void acceptsPercentEscapedUrls() throws Exception {
+        String url = "https://filedn.com/lM7rLs0xJ8D4NY4k6reRFI4/0102%20-%20%E3%81%BB%E3%81%8A%E3%81%9A%E3%81%8D%20-%20New%20Classic%20ORIGINAL%20SOUNDTRACK.mp3";
+        assertEquals(url, UrlValidator.validate(url));
+        assertEquals("https://hstorage.jp/dl/03EbrXHWiFn9.mp3", UrlValidator.validate("https://hstorage.jp/dl/03EbrXHWiFn9.mp3"));
+    }
+
+    @Test
+    void rejectsUrlCutOffInsideEscape() {
+        AudioFailure f = assertThrows(AudioFailure.class,
+                () -> UrlValidator.validate("https://example.com/a%20-%20%E3%81%BB%E3%81%8A%E3%81%9A%"));
+        assertEquals(Messages.Error.UNSUPPORTED_URL, f.reason());
+        assertTrue(f.detail().contains("256"));
     }
 
     @Test

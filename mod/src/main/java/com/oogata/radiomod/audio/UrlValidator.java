@@ -34,7 +34,9 @@ public final class UrlValidator {
         try {
             uri = new URI(trimmed);
         } catch (URISyntaxException e) {
-            throw AudioFailure.unsupported("URL の形式が正しくありません: " + e.getReason());
+            String hint = e.getReason() != null && e.getReason().contains("escape")
+                    ? "（URL が途中で切れていませんか？ チャット欄は256文字までです）" : "";
+            throw AudioFailure.unsupported("URL の形式が正しくありません: " + e.getReason() + hint);
         }
         String scheme = uri.getScheme();
         if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
