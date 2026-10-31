@@ -654,6 +654,8 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 // （実機で、準備できた位置が曲の頭から 1〜2 秒の時点で 13〜29 秒になった）。位置の基準には使わず、
                 // 「取得を始めた位置（要求した位置）」を使う。タイムコードは診断のために記録するだけにする。
                 firstFrameTimecode = frame.getTimecode();
+                RadioMod.LOGGER.info("[{}] 最初のフレーム: 生のタイムコード={}ms 要求位置={}ms トラックの位置={}ms", describe(),
+                        firstFrameTimecode, position.positionMs(0), track == null ? -1 : track.getPosition());
                 position.markBased();
             }
             if (pending == null) {
@@ -743,8 +745,16 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 if (start > 0 && (live || !loaded.isSeekable())) {
                     start = 0; // 位置を合わせ直せない音源は、取得した時点から鳴らす
                 }
+                long loadedPosition = loaded.getPosition();
+                RadioMod.LOGGER.info("[{}] 取得したトラック: id={} uri={} hash={} 長さ={}ms 位置={}ms seek可={} 開始位置={}ms pausePositionMs={} 位置合わせ={}",
+                        describe(), loaded.getInfo().identifier, loaded.getInfo().uri, System.identityHashCode(loaded),
+                        loaded.getDuration(), loadedPosition, loaded.isSeekable(), start, pausePositionMs, target != null);
                 if (start > 0) {
                     loaded.setPosition(start);
+                } else if (loadedPosition != 0 && loaded.isSeekable()) {
+                    // 取得したトラックが 0 以外の位置を持っていたら、頭に戻す（前回の再生位置を引き継がない）。
+                    RadioMod.LOGGER.warn("[{}] 取得したトラックの位置が 0 ではないため、頭に戻します: {}ms", describe(), loadedPosition);
+                    loaded.setPosition(0);
                 }
                 position.reset(start);
                 {
