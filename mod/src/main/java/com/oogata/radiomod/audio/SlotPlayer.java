@@ -74,7 +74,9 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
     private long stateSinceNanos = System.nanoTime();
     private State trackedState = State.IDLE;
     private String lastGate = "-";
-    private int discardedBuffers;
+    /** 破棄したバッファの数。前の曲の残り（曲の切り替え・停止のとき）と、新しい曲を積んだあとの読み直しで分ける。 */
+    private int discardedPrevious;
+    private int discardedBySeek;
     private long firstFrameTimecode = -1;
     private long gateDesiredMs = -1;
     private long pinnedSinceNanos;
@@ -366,7 +368,11 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
             // 一度も鳴らしていない音源では、積んだバッファが「処理済み」にならず、alSourceUnqueueBuffers が
             // 使えない（AL_INVALID_OPERATION）。止めた音源から全バッファを外すには AL_BUFFER = 0 を使う。
             AL10.alSourcei(source, AL10.AL_BUFFER, 0);
-            discardedBuffers += queued.size();
+            if (track == null) {
+                discardedPrevious += queued.size();
+            } else {
+                discardedBySeek += queued.size();
+            }
             queued.clear();
             freeBuffers.clear();
             for (int b : allBuffers) {
@@ -556,10 +562,11 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
                 AL10.alSourcePlay(source);
                 state = State.PLAYING;
                 lastDriftNanos = now;
-                RadioMod.LOGGER.info("[{}] 鳴らし始め: 鳴らすべき位置={}ms 準備できた位置(要求位置+再生済み)={}ms 最初のフレームのタイムコード={}ms 速度={} AL_PITCH={} キュー={} 読み直し={}回 再生済み={}フレーム 破棄したバッファ={}個",
+                RadioMod.LOGGER.info("[{}] 鳴らし始め: 鳴らすべき位置={}ms 準備できた位置(要求位置+再生済み)={}ms 最初のフレームのタイムコード={}ms 速度={} AL_PITCH={} キュー={} 読み直し={}回 再生済み={}フレーム 破棄したバッファ: 前の曲の残り={}個 読み直しで新しい曲の分={}個",
                         describe(), gateDesiredMs, gateReadyMs, firstFrameTimecode, speed.rate(), AL10.alGetSourcef(source, AL10.AL_PITCH),
-                        queued.size(), gate.seeks(), position.processedFrames(), discardedBuffers);
-                discardedBuffers = 0;
+                        queued.size(), gate.seeks(), position.processedFrames(), discardedPrevious, discardedBySeek);
+                discardedPrevious = 0;
+                discardedBySeek = 0;
             }
         } else if (state == State.PLAYING) {
             int alState = AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE);
