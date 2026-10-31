@@ -191,4 +191,31 @@ class SlotRouterTest {
         router.handle(new Messages.Move(radio, "minecraft:overworld", 1, 2, 3));
         assertTrue(controls.isEmpty());
     }
+
+    @Test
+    void 画面に出す曲の様子は_一時停止の位置と鳴らすべき位置を返す() {
+        router.handle(play(Messages.Slot.PERSONAL_SLOT, 180_000, 1_000_000L));
+        nano.set(0);
+        // サーバー時刻 = 1_000_000 + (nano ms)。起点が 1_000_000 なので、位置は nano ms
+        SlotRouter.NowPlaying n = router.nowPlaying().get(0);
+        assertEquals("a", n.title());
+        assertEquals(180_000, n.durationMs());
+        assertEquals(false, n.paused());
+        assertTrue(n.audible());
+        nano.set(10_000 * MS);
+        assertEquals(10_000, router.nowPlaying().get(0).positionMs());
+        router.handle(new Messages.Pause(Messages.Slot.PERSONAL_SLOT, 7_000));
+        nano.set(20_000 * MS);
+        n = router.nowPlaying().get(0);
+        assertEquals(true, n.paused());
+        assertEquals(7_000, n.positionMs());
+        router.handle(new Messages.Stop(Messages.Slot.PERSONAL_SLOT));
+        assertTrue(router.nowPlaying().isEmpty());
+    }
+
+    @Test
+    void ライブの位置は_minus1() {
+        router.handle(play(Messages.Slot.PERSONAL_SLOT, -1, 1_000_000L));
+        assertEquals(-1, router.nowPlaying().get(0).positionMs());
+    }
 }

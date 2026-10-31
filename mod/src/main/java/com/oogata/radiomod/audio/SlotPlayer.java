@@ -131,6 +131,13 @@ public final class SlotPlayer implements AutoCloseable, SlotControl {
         return slot;
     }
 
+    @Override
+    public boolean audible() {
+        synchronized (lock) {
+            return state != State.IDLE && state != State.ENDED;
+        }
+    }
+
     // ---- 操作 ----
 
     /**

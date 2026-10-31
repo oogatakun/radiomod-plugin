@@ -36,4 +36,9 @@ public interface SlotControl {
     /** ラジオのスロットだけ: STOP のあと、このスロットの持ち物を片付ける。 */
     default void dispose() {
     }
+
+    /** 音が出ている(出す準備をしている)か。ラジオが範囲の外で止まっているときなどは false。画面のバーに出すかどうかに使う。 */
+    default boolean audible() {
+        return true;
+    }
 }

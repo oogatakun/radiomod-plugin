@@ -18,12 +18,18 @@ public final class SlotRouter {
     private static final class SlotState {
         final long trackId;
         final boolean live;
+        final String title;
+        final long durationMs;
         volatile long originMs;
+        volatile boolean paused;
+        volatile long pausedPositionMs;
 
-        SlotState(long trackId, boolean live, long originMs) {
+        SlotState(long trackId, boolean live, long originMs, String title, long durationMs) {
             this.trackId = trackId;
             this.live = live;
             this.originMs = originMs;
+            this.title = title;
+            this.durationMs = durationMs;
         }
     }
 
@@ -44,13 +50,17 @@ public final class SlotRouter {
         if (message instanceof Messages.Play m) {
             play(m);
         } else if (message instanceof Messages.Pause m) {
-            if (states.containsKey(m.slot())) {
+            SlotState s = states.get(m.slot());
+            if (s != null) {
+                s.paused = true;
+                s.pausedPositionMs = m.positionMs();
                 controls.apply(m.slot()).pause(m.positionMs());
             }
         } else if (message instanceof Messages.Resume m) {
             SlotState s = states.get(m.slot());
             if (s != null) {
                 s.originMs = m.originMs();
+                s.paused = false;
                 controls.apply(m.slot()).resume();
             }
         } else if (message instanceof Messages.Stop m) {
@@ -114,7 +124,7 @@ public final class SlotRouter {
 
     private void play(Messages.Play m) {
         boolean live = m.durationMs() < 0;
-        SlotState state = new SlotState(m.trackId(), live, m.originMs());
+        SlotState state = new SlotState(m.trackId(), live, m.originMs(), m.title(), m.durationMs());
         states.put(m.slot(), state);
         // ライブは位置合わせをしない（protocol.md 11）。
         SlotControl control = controls.apply(m.slot());
@@ -132,6 +142,23 @@ public final class SlotRouter {
             }
             return now - state.originMs + manualOffsetMs.getAsLong();
         };
+    }
+
+    /** 画面に出す、いま鳴っている(または止めている)曲の様子。 */
+    public record NowPlaying(Messages.Slot slot, long trackId, String title, long durationMs, boolean paused,
+                             long positionMs, boolean audible) {
+    }
+
+    /** 曲のあるスロットの様子の一覧。位置は、一時停止中ならその位置、そうでなければ鳴らすべき位置。ライブは -1。 */
+    public synchronized java.util.List<NowPlaying> nowPlaying() {
+        java.util.List<NowPlaying> out = new java.util.ArrayList<>();
+        for (Map.Entry<Messages.Slot, SlotState> e : states.entrySet()) {
+            SlotState s = e.getValue();
+            long position = s.live ? -1 : s.paused ? s.pausedPositionMs : Math.max(0, desired(s).getAsLong());
+            out.add(new NowPlaying(e.getKey(), s.trackId, s.title, s.durationMs, s.paused, position,
+                    controls.apply(e.getKey()).audible()));
+        }
+        return out;
     }
 
     /** そのスロットの、いま再生中の曲の trackId。なければ -1。ERROR に載せる。 */

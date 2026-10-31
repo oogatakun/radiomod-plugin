@@ -26,5 +26,10 @@ public final class ClientSetup {
             }
         });
         MinecraftForge.EVENT_BUS.register(new VolumeOptions());
+        // 左下のプレーヤーのバーと、押している間だけカーソルを出すキー
+        var modBus = FMLJavaModLoadingContext.get().getModEventBus();
+        modBus.addListener(PlayerBarEvents::onRegisterKeys);
+        modBus.addListener(PlayerBarEvents::onRegisterOverlays);
+        MinecraftForge.EVENT_BUS.addListener(PlayerBarEvents::onClientTick);
     }
 }

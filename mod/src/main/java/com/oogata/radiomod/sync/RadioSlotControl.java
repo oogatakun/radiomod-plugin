@@ -112,6 +112,11 @@ public final class RadioSlotControl implements SlotControl {
     }
 
     @Override
+    public synchronized boolean audible() {
+        return active && inner.audible();
+    }
+
+    @Override
     public synchronized String stateName() {
         return inner.stateName() + (wanted && !active ? "(範囲外)" : "");
     }
